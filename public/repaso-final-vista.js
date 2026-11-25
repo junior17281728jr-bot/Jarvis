@@ -17,6 +17,8 @@ import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revis
 import { botonConsecuencia } from './consecuencia-vista.js';
 // 0.14.85: «⚑ Reportar un error» de cada pregunta ya respondida (public/reportar-vista.js).
 import { enlaceReportar, puntoPregunta } from './reportar-vista.js';
+// 0.14.116: «Responder con mis palabras» (la IA lo compara con el libro; public/oral-palabras.js).
+import { iaDisponible, sugeridaDe, piezasDevolucion, pedirDevolucion, cajaPalabras } from './oral-palabras.js';
 
 const RUTA = '#repaso';
 
@@ -276,7 +278,8 @@ export function rondaOralFinal(d, materia, h) {
   const sinRespuesta = () => t('rf.oral.sin_respuesta');
   // El paso de voz de lo que está en pantalla (el frente o la respuesta), con «Manos libres» si está encendido.
   const leerFrente = x => hablar(piezasPregunta(x), libres ? () => cuentaAtras(x) : null);
-  const leerAtras = x => hablar(piezasRespuesta(x, idiomaVisto(), x.respuesta_en || x.respuesta_es ? '' : sinRespuesta()),
+  // 0.14.116: si respondió con sus palabras, primero lo que dijo la IA (en «Tú controlas»; Manos libres se pausó).
+  const leerAtras = x => hablar([...(actual?.x === x ? piezasDevolucion(actual.dev, t) : []), ...piezasRespuesta(x, idiomaVisto(), x.respuesta_en || x.respuesta_es ? '' : sinRespuesta())],
     libres ? () => esperar(PAUSA_SIGUIENTE, () => { if (zona.isConnected) siguiente(); }) : null);
   const cuentaAtras = x => {
     let n = PAUSA_PENSAR;
@@ -291,6 +294,20 @@ export function rondaOralFinal(d, materia, h) {
     tic();
   };
   const leerActual = () => { if (actual) (actual.atras ? leerAtras : leerFrente)(actual.x); };
+  // ---- 0.14.116: «Responder con mis palabras» ----
+  let iaPal = iaDisponible(d.ia);
+  let pal = null; // el cuadro abierto (cajaPalabras)
+  let palTurno = 0; // cada tarjeta nueva (o salir) deja de esperar lo de la IA
+  const soltarPal = () => { palTurno += 1; pal?.soltar(); pal = null; };
+  const revisarIa = () => {
+    Promise.resolve(api('GET', '/api/academia/repaso-final/oral/ia')).then(r => {
+      const si = Boolean(r?.ok) && iaDisponible(r.datos);
+      if (si === iaPal) return;
+      iaPal = si;
+      // La tarjeta que se ve (si está en la pregunta) se pinta otra vez con el botón como está ahora.
+      if (actual && !actual.atras && !actual.palabras && zona.isConnected) pintarPie(actual.x, false);
+    }, () => {});
+  };
   const segmento = (grupo, opciones, valor, alElegir, clase) => {
     const botones = opciones.map(([id, texto, ic]) => el('button', { type: 'button', class: 'rf-voz-boton con-icono', 'data-valor': id, 'aria-pressed': String(id === valor),
       onclick: () => { for (const b of botones) b.setAttribute('aria-pressed', String(b.dataset.valor === id)); alElegir(id); } },
@@ -305,6 +322,8 @@ export function rondaOralFinal(d, materia, h) {
     pintarModo();
     if (!actual) return;
     if (libres) {
+      // 0.14.116: respondiendo con sus palabras (o esperando a la IA): Manos libres vuelve a la pregunta y sigue solo.
+      if (actual.palabras) { pintar(actual.x); return; }
       // Encendido con un toque: si la tarjeta ya mostró la respuesta, se lee y sigue sola; si no, desde la pregunta.
       callar();
       pintarPie(actual.x, actual.atras);
@@ -342,9 +361,9 @@ export function rondaOralFinal(d, materia, h) {
       }
     }, () => {});
   };
+  // 0.14.116: todo en una sola fila que se acomoda (antes, dos filas fijas): en el teléfono la pregunta queda más arriba.
   const barraVoz = voz ? el('section', { class: 'rf-voz', 'aria-label': t('rf.voz.grupo') },
-    el('div', { class: 'rf-voz-fila' }, interruptor.nodo, otraVez),
-    el('div', { class: 'rf-voz-fila' }, ...[modo.nodo, h.ayudaVozOral?.() ?? null].filter(Boolean)),
+    el('div', { class: 'rf-voz-fila' }, ...[interruptor.nodo, otraVez, modo.nodo, h.ayudaVozOral?.() ?? null].filter(Boolean)),
     lineaModo,
     tocaFila) : null;
   pintarModo();
@@ -352,6 +371,7 @@ export function rondaOralFinal(d, materia, h) {
   // Al salir de la pantalla, se calla y nada más sigue.
   const salir = () => {
     callar();
+    soltarPal();
     globalThis.window?.removeEventListener?.('hashchange', salir);
     globalThis.window?.removeEventListener?.('pagehide', salir);
   };
@@ -382,19 +402,74 @@ export function rondaOralFinal(d, materia, h) {
     if (!sabia) cola.push(x);
     siguiente();
   };
-  const botonesSabia = x => {
+  // 0.14.116: con lo que dijo la IA, se sugiere uno (con «Sugerido»), pero él decide.
+  const botonesSabia = (x, sugerida = null) => {
     const botones = [];
-    botones.push(el('button', { type: 'button', class: 'boton-3d grande rojo', onclick: () => marcar(x, false, botones) }, el('span', { texto: t('rf.oral.no_sabia') })));
-    botones.push(el('button', { type: 'button', class: 'boton-3d grande verde', onclick: () => marcar(x, true, botones) }, el('span', { texto: t('rf.oral.sabia') })));
+    const marca = si => (sugerida === si ? [el('span', { class: 'rf-pal-sugerido', texto: t('rf.pal.sugerido') })] : []);
+    botones.push(el('button', { type: 'button', class: `boton-3d grande rojo${sugerida === false ? ' rf-sugerido' : ''}`, onclick: () => marcar(x, false, botones) }, el('span', { texto: t('rf.oral.no_sabia') }), ...marca(false)));
+    botones.push(el('button', { type: 'button', class: `boton-3d grande verde${sugerida === true ? ' rf-sugerido' : ''}`, onclick: () => marcar(x, true, botones) }, el('span', { texto: t('rf.oral.sabia') }), ...marca(true)));
     return el('div', { class: 'rf-sabia' }, botones);
+  };
+  // 0.14.116: «Responder con mis palabras» (debajo de «Ver respuesta», chico). Sin IA para él ahora: el mismo botón
+  // apagado, «La corrección con IA está desactivada en este momento» y «¿Qué hace?» (la explicación).
+  const puedePalabras = x => !x.adicional && Boolean(x.respuesta_en);
+  const filaPalabras = x => {
+    if (!puedePalabras(x)) return null;
+    const boton = el('button', { type: 'button', class: 'secundario con-icono rf-pal-abrir', disabled: !iaPal, onclick: () => abrirPalabras(x) },
+      icono('lapiz', 'icono chico'), el('span', { texto: t('rf.pal.boton') }));
+    const queHace = h.ayudaPalabras?.() ?? null;
+    return el('div', { class: `rf-pal-fila${iaPal ? '' : ' apagada'}` },
+      el('div', { class: 'rf-pal-fila-botones' }, ...[boton, iaPal ? null : queHace].filter(Boolean)),
+      ...(iaPal ? [] : [el('p', { class: 'rf-pal-nota suave chica', texto: t('rf.pal.desactivada') })]));
+  };
+  // El pie mientras responde: «Enviar» y, al lado, «Ver respuesta» (por si prefiere mirarla).
+  const piePalabras = x => {
+    let enviando = false;
+    const enviar = botonGrande(t('rf.pal.enviar'), async () => {
+      if (!pal || enviando) return;
+      if (pal.grabando()) return; // primero termina de escribir lo que dijo
+      const texto = pal.valor();
+      if (!texto) { pal.decir('rf.pal.vacio'); pal.enfocar(); return; }
+      enviando = true;
+      callar();
+      enviar.disabled = true;
+      pal.bloquear(true);
+      pal.decir('rf.pal.revisando');
+      actual.palabras = 'esperando';
+      const mio = palTurno;
+      const r = await pedirDevolucion({ api, tarjeta: x.id, texto, vigente: () => mio === palTurno && zona.isConnected, reloj });
+      if (r == null || mio !== palTurno) return;
+      if (r.estado === 'error') { enviando = false; enviar.disabled = false; pal.bloquear(false); pal.decir(null); actual.palabras = 'escribir'; return avisar(textoError(r.error), 'mal'); }
+      // No llegó: se pregunta otra vez si hay IA para él (un corte de red o una que tardó no la apaga para siempre); si
+      // no, las siguientes tarjetas ya lo muestran apagado.
+      if (r.estado === 'sin_ia') revisarIa();
+      pintarAtras(x, { suya: texto, dev: r.estado === 'lista' ? r : null, nota: r.estado !== 'lista' });
+    }, { tono: 'azul' });
+    if (actual?.palabras === 'esperando') { enviando = true; enviar.disabled = true; }
+    const ver = el('button', { type: 'button', class: 'secundario rf-pal-ver', onclick: () => pintarAtras(x) }, el('span', { texto: t('rf.oral.ver') }));
+    return el('div', { class: 'rf-pal-pie' }, enviar, ver);
   };
   // El pie: atrás, «La sabía / No la sabía»; adelante, «Ver respuesta» (con «Manos libres», también las dos: se puede
   // marcar en cualquier momento).
   const pintarPie = (x, atras) => {
-    pie.classList.toggle('apilados', !atras && vozSi && libres);
-    if (atras) return pie.replaceChildren(cuentaVoz, botonesSabia(x));
+    const palabras = !atras && actual?.x === x && actual.palabras;
+    pie.classList.toggle('apilados', !atras && !palabras && ((vozSi && libres) || puedePalabras(x)));
+    if (atras) return pie.replaceChildren(cuentaVoz, botonesSabia(x, actual?.x === x && actual.dev ? sugeridaDe(actual.dev.veredicto) : null));
+    if (palabras) return pie.replaceChildren(piePalabras(x));
     const ver = botonGrande(t('rf.oral.ver'), () => pintarAtras(x), { tono: 'azul' });
-    pie.replaceChildren(...[cuentaVoz, ver, vozSi && libres ? botonesSabia(x) : null].filter(Boolean));
+    pie.replaceChildren(...[cuentaVoz, ver, filaPalabras(x), vozSi && libres ? botonesSabia(x) : null].filter(Boolean));
+  };
+  // Abre el cuadro para responder: Manos libres se pausa (no espera respuestas escritas) y la voz se calla.
+  const abrirPalabras = x => {
+    if (!iaPal || !actual || actual.x !== x) return;
+    callar();
+    soltarPal();
+    if (libres) { libres = false; pintarModo(); }
+    actual = { x, atras: false, palabras: 'escribir' };
+    pal = cajaPalabras(h, { idioma: idiomaVisto() === 'en' ? 'en' : 'es', alCallar: callar });
+    zona.replaceChildren(el('article', { class: 'tarjeta-leccion oral-libro rf-tarjeta' }, ...frente(x), pal.nodo));
+    pintarPie(x, false);
+    pal.enfocar();
   };
   // 0.14.3: la pregunta en español (si ya está traducida) con «Español | Inglés original»; la respuesta igual, y su dibujo.
   const frente = x => [
@@ -407,9 +482,23 @@ export function rondaOralFinal(d, materia, h) {
       x.n != null ? rotulo(h, Boolean(x.pregunta_es), t('oral.pregunta_es', { n: x.n }), t('oral.pregunta_libro', { n: x.n })) : el('p', { class: 'oral-qa-etiqueta', texto: t('rf.oral.pregunta') }),
       bilingue(h, 'p', x.pregunta_es, x.pregunta_en, 'oral-qa-pregunta')),
   ];
+  // 0.14.116: lo que respondió y lo que dijo la IA (veredicto «Bien / Casi / Falta», la idea clave, lo que dijo bien y lo
+  // que faltó), o la nota si la IA no estuvo. Después va la respuesta del libro, tal cual.
+  const vistaSuya = (suya, dev, nota) => el('section', { class: `rf-pal-resultado${dev ? ` ${dev.veredicto}` : ''}`, 'aria-live': 'polite' },
+    el('p', { class: 'oral-qa-etiqueta', texto: t('rf.pal.tu_respuesta') }),
+    el('p', { class: 'rf-pal-suya', texto: suya }),
+    ...(dev ? [
+      el('p', { class: 'rf-pal-veredicto' }, el('span', { class: `rf-pal-sello ${dev.veredicto}`, texto: t(`rf.pal.veredicto.${dev.veredicto}`) }),
+        dev.idea ? el('span', { class: 'rf-pal-idea', texto: dev.idea }) : null),
+      dev.bien ? el('p', { class: 'rf-pal-linea' }, el('strong', { texto: `${t('rf.pal.bien')}: ` }), el('span', { texto: dev.bien })) : null,
+      dev.falto ? el('p', { class: 'rf-pal-linea' }, el('strong', { texto: `${t('rf.pal.falto')}: ` }), el('span', { texto: dev.falto })) : null,
+      el('p', { class: 'rf-pal-decide suave chica', texto: t('rf.pal.tu_decides') }),
+    ].filter(Boolean) : []),
+    ...(nota ? [el('p', { class: 'rf-pal-nota-ia con-icono-chico' }, icono('info', 'icono chico'), el('span', { texto: t('rf.pal.no_llego') }))] : []));
   let dibujo = null;
   const pintar = x => {
     parar();
+    soltarPal();
     dibujo?.destruir?.();
     dibujo = null;
     avance();
@@ -419,12 +508,16 @@ export function rondaOralFinal(d, materia, h) {
     pintarPie(x, false);
     leerFrente(x);
   };
-  const pintarAtras = (x, { sonido = true } = {}) => {
+  // 0.14.116: suya: lo que respondió con sus palabras; dev: lo que dijo la IA; nota: la IA no estuvo (desactivada o no
+  // llegó): la respuesta del libro con «La corrección con IA está desactivada en este momento» (nunca en blanco).
+  const pintarAtras = (x, { sonido = true, suya = null, dev = null, nota = false } = {}) => {
     parar();
+    soltarPal();
     if (sonido) sonar('toque');
-    actual = { x, atras: true };
+    actual = { x, atras: true, dev };
     dibujo = x.visual && vistaVisual ? vistaVisual(x.visual) : null;
     zona.replaceChildren(el('article', { class: 'tarjeta-leccion oral-libro rf-tarjeta' }, ...frente(x),
+      ...(suya ? [vistaSuya(suya, dev, nota)] : []),
       el('section', { class: 'oral-qa rf-oral-respuesta' },
         x.respuesta_en ? [rotulo(h, Boolean(x.respuesta_es), t('oral.respuesta_es'), t('oral.respuesta_libro')), bilingue(h, 'p', x.respuesta_es, x.respuesta_en, 'oral-qa-respuesta')]
           : [el('p', { class: 'oral-qa-etiqueta', texto: t('oral.respuesta_libro') }), el('p', { class: 'suave', texto: t('rf.oral.sin_respuesta') })]),

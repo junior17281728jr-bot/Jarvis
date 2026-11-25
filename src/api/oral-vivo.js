@@ -11,7 +11,8 @@
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { espacioDe } from '../cuentas/espacios.js';
 import { leerGuardado } from '../academia/instructor-ia.js';
-import { sistemaCalificar, textoCalificar, armarCierre, RESPUESTA_MAX_LETRAS } from '../academia/oral-vivo-ia.js';
+import { sistemaCalificar, sistemaPalabras, textoCalificar, armarCierre, RESPUESTA_MAX_LETRAS } from '../academia/oral-vivo-ia.js';
+import { tarjetaParaPalabras, textoPalabras, clavePalabras, vistaPalabras } from '../academia/repaso-final.js';
 import {
   VIVO, portadaVivo, crearVivo, vistaAbierta, abiertaDe, materialCalificar, anotarRespuesta, ponerCalificacion, cerrarVivo, ponerCierre, datosCierre, leerVivo, calificarSistema, porqueDe,
 } from '../academia/oral-vivo.js';
@@ -345,6 +346,65 @@ export function registrarRutasOralVivo(rutas, h) {
       }
     }
     return { codigo: 200, datos: { ...fin, resumen: fin.resumen ? { ...fin.resumen, cierre: vistaCierre(cierre) } : null } };
+  });
+  // ---------- 0.14.116: «Responder con mis palabras» del Repaso final (src/academia/repaso-final.js) ----------
+  // Lo mismo que la práctica en vivo: su IA (estadoInstructor: apagada, en pausa, sin usos, sin su permiso, un tope → no),
+  // un uso por respuesta nueva (pedirIa; la misma respuesta otra vez no se cobra) y la misma fila. Sin IA, o si la IA no
+  // llegó: { estado: 'sin_ia' } y la pantalla muestra la respuesta del libro con «La corrección con IA está desactivada en
+  // este momento». Sin nombres: a la IA va solo el texto que escribió y el libro.
+  const iaPalabras = (db, req, usuario, ahora) => {
+    const i = estadoInstructor(db, req, usuario, ahora);
+    return i.modo === 'ia' ? { disponible: true, motivo: null } : { disponible: false, motivo: i.modo === 'espera' ? 'espera' : (i.motivo ?? 'no_disponible') };
+  };
+  // La tarea de esa clave (solo una suya): 'pendiente' | 'hecha' | null.
+  const tareaDeClave = (db, usuario, clave) => {
+    const e = espacioDe(db, usuario);
+    const f = e ? db.prepare("SELECT estado FROM tareas WHERE tipo = 'academia.instructor' AND espacio_id = ? AND creada_por = ? AND datos LIKE ? ORDER BY id DESC LIMIT 1").get(e.id, usuario.id, `%"clave":"${clave}"%`) : null;
+    if (!f) return null;
+    return f.estado === 'lista' || f.estado === 'en_curso' ? 'pendiente' : 'hecha';
+  };
+  const datosPalabras = (db, datos) => {
+    const y = tarjetaParaPalabras(conPaquete(db), textoDe(datos, 'tarjeta'));
+    if (!y) throw new ErrorHttp(404, 'no_existe');
+    const texto = textoPalabras(textoDe(datos, 'texto'));
+    if (!texto) throw new ErrorHttp(400, 'datos_no_validos');
+    return { ...y, texto };
+  };
+  rutas.agregar('GET', '/api/academia/repaso-final/oral/ia', ({ db, req, usuario }) => {
+    contar(topes.lecturas, usuario);
+    return { codigo: 200, datos: iaPalabras(db, req, usuario, reloj()) };
+  });
+  rutas.agregar('POST', '/api/academia/repaso-final/oral/palabras', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    contar(topes.explicar, usuario);
+    const p = conPaquete(db);
+    const { x, it, texto } = datosPalabras(db, datos);
+    const ahora = reloj();
+    const clave = clavePalabras(usuario.id, x, texto);
+    // Ya calificada (la misma respuesta): se ve sin pedir nada ni cobrar.
+    const ya = vistaPalabras(leerGuardado(db, clave));
+    if (ya) return { codigo: 200, datos: ya };
+    const ia = iaPalabras(db, req, usuario, ahora);
+    if (!ia.disponible) return { codigo: 200, datos: { estado: 'sin_ia', motivo: ia.motivo } };
+    if (tareaDeClave(db, usuario, clave) === 'pendiente') return { codigo: 200, datos: { estado: 'pendiente' } };
+    const m = materialCalificar(p, it, sistemaPalabras);
+    const pedido = { uso: 'instructor_oral_vivo', sistema: m.sistema, texto: textoCalificar({ n: m.n, respuesta: texto }), clave, extra: { seguimiento: true, palabras: true } };
+    const cabe = JSON.stringify([pedido.sistema, pedido.texto, clave]).length <= CABE_DATOS;
+    const r = cabe ? pedirIa(db, usuario, pedido) : { estado: 'no', motivo: 'demasiado_largo' };
+    if (r.estado !== 'pendiente') return { codigo: 200, datos: { estado: 'sin_ia', motivo: r.motivo ?? 'no_disponible' } };
+    return { codigo: 200, datos: { estado: 'pendiente' } };
+  });
+  // ¿Ya llegó? (la pantalla pregunta con la misma tarjeta y el mismo texto: la clave es la misma).
+  rutas.agregar('POST', '/api/academia/repaso-final/oral/palabras/ver', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    contar(topes.lecturas, usuario);
+    const { x, texto } = datosPalabras(db, datos);
+    const clave = clavePalabras(usuario.id, x, texto);
+    const ya = vistaPalabras(leerGuardado(db, clave));
+    if (ya) return { codigo: 200, datos: ya };
+    if (tareaDeClave(db, usuario, clave) === 'pendiente') return { codigo: 200, datos: { estado: 'pendiente' } };
+    // No llegó (el proveedor falló, no respondió a tiempo, se acabó el crédito): el uso ya se devolvió (pedirIa).
+    return { codigo: 200, datos: { estado: 'sin_ia', motivo: 'no_llego' } };
   });
   // El administrador, en la ficha del alumno: su historial de prácticas en vivo (solo cifras).
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/oral-vivo', ({ db, parametros }) => {

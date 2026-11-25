@@ -1910,3 +1910,70 @@ button.que-es.rf-voz-como { font-size: 14px; padding: 4px 12px 4px 8px; }
 .rf-voz-cuenta { margin: 0; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 .rf-voz-cuenta[hidden] { display: none; }
 @media (max-width: 400px) { .rf-voz-boton { padding: 0 10px; } }
+
+/* 0.14.116: «Responder con mis palabras» en el oral del Repaso final. Debajo de «Ver respuesta», chico (44 px): así la
+   pregunta sigue arriba en el teléfono. Apagado (sin IA ahora): el botón gris, «¿Qué hace?» y una línea que lo dice. */
+.rf-pal-fila { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.rf-pal-fila-botones { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.rf-pal-abrir { min-height: 44px; flex: 1 1 auto; justify-content: center; font-weight: 700; font-size: 15px; gap: 6px; border-radius: 14px; }
+.rf-pal-abrir:disabled { opacity: 0.55; cursor: default; }
+.rf-pal-fila.apagada .rf-pal-abrir { flex: 1 1 0; min-width: 0; white-space: normal; }
+button.que-es.rf-pal-que { min-height: 44px; font-size: 14px; padding: 4px 12px 4px 8px; flex: 0 0 auto; }
+.rf-pal-nota { margin: 0; text-align: center; font-size: 13px; line-height: 1.35; }
+/* El cuadro para responder (dentro de la tarjeta, debajo de la pregunta). */
+.rf-pal { margin-top: 12px; padding: 10px 12px; border: 2px solid var(--linea); border-radius: 16px; background: var(--tarjeta); }
+.rf-pal-etiqueta { margin-top: 0; }
+.rf-pal-texto { display: block; width: 100%; box-sizing: border-box; min-height: 88px; font: inherit; font-size: 16px; line-height: 1.4; color: inherit; background: transparent; border: 0; resize: vertical; padding: 4px 0; }
+.rf-pal-texto:focus { outline: 2px solid var(--azul); outline-offset: 2px; border-radius: 8px; }
+.rf-pal-texto:disabled { opacity: 0.7; }
+.rf-pal-controles { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.rf-pal-mic { display: grid; place-items: center; width: 48px; height: 48px; flex: 0 0 auto; border-radius: 50%; border: 0; background: var(--rojo); color: #fff; box-shadow: 0 3px 0 var(--rojo-borde); cursor: pointer; }
+.rf-pal-mic[hidden] { display: none; }
+.rf-pal-mic .icono { width: 24px; height: 24px; }
+.rf-pal-mic:disabled { opacity: 0.45; cursor: default; }
+.rf-pal-mic.grabando .icono { display: none; }
+.rf-pal-mic.grabando::before { content: ''; width: 18px; height: 18px; border-radius: 4px; background: #fff; }
+.rf-pal-mic:focus-visible { outline: 3px solid var(--azul); outline-offset: 2px; }
+.rf-pal-estado { margin: 0; font-size: 14px; line-height: 1.35; }
+.rf-pal-estado:empty { display: none; }
+.rf-pal-pie { display: flex; gap: 10px; width: 100%; align-items: stretch; }
+.rf-pal-pie .boton-3d.grande { flex: 1 1 auto; }
+.rf-pal-ver { min-height: 44px; flex: 0 0 auto; font-weight: 700; border-radius: 14px; padding: 0 14px; }
+/* Lo que respondió y lo que dijo la IA. */
+.rf-pal-resultado { margin-top: 12px; padding: 10px 12px; border-radius: 16px; border: 2px solid var(--linea); background: var(--tarjeta); }
+.rf-pal-resultado.bien { border-color: var(--verde); background: var(--verde-suave); }
+.rf-pal-resultado.casi { border-color: var(--casi-borde); background: var(--casi-suave); }
+.rf-pal-resultado.mal { border-color: var(--rojo); background: var(--rojo-suave); }
+.rf-pal-resultado .oral-qa-etiqueta { margin-top: 0; }
+.rf-pal-suya { margin: 0 0 8px; font-style: italic; overflow-wrap: anywhere; }
+.rf-pal-veredicto { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin: 0 0 6px; font-weight: 700; line-height: 1.4; }
+.rf-pal-sello { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 14px; font-weight: 800; color: #fff; background: var(--azul-borde); }
+.rf-pal-sello.bien { background: var(--verde-borde); }
+.rf-pal-sello.casi { background: var(--casi-borde); color: #2a1400; }
+.rf-pal-sello.mal { background: var(--rojo-borde); }
+.rf-pal-resultado.bien .rf-pal-idea { color: var(--verde-texto); }
+.rf-pal-resultado.casi .rf-pal-idea { color: var(--casi-texto); }
+.rf-pal-resultado.mal .rf-pal-idea { color: var(--rojo-texto); }
+.rf-pal-linea { margin: 0 0 4px; line-height: 1.4; }
+.rf-pal-decide { margin: 6px 0 0; }
+.rf-pal-nota-ia { margin: 0; font-weight: 700; line-height: 1.4; align-items: flex-start; }
+.rf-pal-nota-ia .icono { flex: none; margin-top: 2px; }
+/* «Sugerido» dentro del botón que sugiere la IA (él decide). */
+.rf-sabia .boton-3d.grande { flex-direction: column; gap: 0; }
+.rf-pal-sugerido { display: block; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.9; }
+.rf-sabia .boton-3d.rf-sugerido { outline: 3px solid var(--oro); outline-offset: 2px; }
+/* 0.14.116: en el teléfono, la línea que explica el modo de voz no se ve (lo explica «¿Cómo funciona?»): así la pregunta
+   queda arriba, a la vista, y no debajo de los controles. */
+@media (max-width: 480px) { .rf-voz-linea { display: none; } .rf-voz { margin-bottom: 6px; } }
+/* 0.14.116: los botones de la voz y de «Responder con mis palabras» sin el margen de arriba de todos los botones (16 px):
+   ese margen era lo que hacía alta la fila de la voz y bajaba la pregunta. */
+.rf-voz-boton, .rf-voz button, .rf-pal-fila button, .rf-pal-pie button, .rf-pal-mic, .repaso-final-oral .idioma-oral-boton { margin: 0; }
+@media (max-width: 480px) { button.que-es.rf-voz-como { padding: 4px 8px 4px 6px; font-size: 13px; } .rf-voz-boton { padding: 0 8px; } .rf-voz-fila { gap: 6px; } }
+/* 0.14.116: en el teléfono «¿Cómo funciona?» es solo su (i) (44 px, con su nombre para el lector de pantalla): así cabe en
+   la fila de la voz y la pregunta sube. */
+@media (max-width: 480px) { button.que-es.rf-voz-como > span { display: none; } button.que-es.rf-voz-como { min-width: 44px; min-height: 44px; padding: 4px 10px; justify-content: center; } }
+/* 0.14.116: apagado, el botón en una sola línea (sin el lápiz, letra un poco menor): el pie queda bajito también con
+   «Manos libres». */
+.rf-pal-fila.apagada .rf-pal-abrir { white-space: nowrap; font-size: 14px; padding: 0 10px; }
+.rf-pal-fila.apagada .rf-pal-abrir .icono { display: none; }
+.rf-pal-fila.apagada button.que-es.rf-pal-que { padding: 4px 10px 4px 6px; font-size: 13px; }

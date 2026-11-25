@@ -67,6 +67,20 @@ export function sistemaCalificar({ capitulo, qa, idioma = 'es' }) {
     bloque({ capitulo, preguntas: qa.map(x => ({ n: x.n, pregunta_en: x.pregunta_en, respuesta_del_libro_en: x.respuesta_en, pregunta_es: x.pregunta_es ?? null, respuesta_del_libro_es: x.respuesta_es ?? null })) }),
   ].join('\n');
 }
+// 0.14.116 (lo pidió el dueño): «Responder con mis palabras» del Repaso final. El alumno repasa solo con tarjetas: leyó UNA
+// pregunta del libro y la respondió con sus palabras. Las MISMAS reglas (también las de calificar justo de 0.14.93) y el
+// mismo libro del capítulo; cambia solo lo que se le pide: aquí linea = la idea clave correcta (ya vio la pregunta y va a
+// ver la respuesta del libro), nunca repregunta. Mismo esquema y mismo uso (instructor_oral_vivo): el trabajador no cambia.
+// El pedido lleva seguimiento: true para que revisarVivo nunca guarde una repregunta.
+export function sistemaPalabras({ capitulo, qa, idioma = 'es' }) {
+  return [
+    ...REGLAS(idioma),
+    'Tu tarea: el alumno repasa solo, con tarjetas. Leyó UNA pregunta del libro (te decimos cuál con su número «n») y la respondió con sus palabras (escrita o dictada). Compárala con la respuesta del libro de esa pregunta y dile cómo le fue, como un instructor amable, corto y en palabras sencillas.',
+    'Campos: veredicto («bien», «casi» o «mal»); linea = la IDEA CLAVE correcta de la respuesta del libro, en UNA frase corta y sencilla, de tú (hasta 120 caracteres; solo lo que dice el libro); bien_dicho = qué dijo bien (hasta 200 caracteres, vacío si nada); falto = lo que le faltó o dijo mal, sin regañar (hasta 200, vacío si nada); repregunta = siempre vacío; repregunta_puntos = siempre [].',
+    'PREGUNTAS Y RESPUESTAS DEL LIBRO (capítulo de referencia):',
+    bloque({ capitulo, preguntas: qa.map(x => ({ n: x.n, pregunta_en: x.pregunta_en, respuesta_del_libro_en: x.respuesta_en, pregunta_es: x.pregunta_es ?? null, respuesta_del_libro_es: x.respuesta_es ?? null })) }),
+  ].join('\n');
+}
 // El texto de calificar: cuál pregunta, lo que dijo (y, si es una repregunta, cuál fue).
 // 0.14.93: con la repregunta, lo que ella pide (puntos: los que dio la IA al hacerla) y la regla de calificar solo eso
 // (aquí y no en el sistema: el sistema es el mismo para todo el capítulo, por la caché).

@@ -18,6 +18,8 @@ import { leerAjuste, guardarAjuste, librosDe } from './paquetes.js';
 import { crearIntento, verIntento, responder, terminar, diaDe, idsTestGuide, falladasTestGuide } from './progreso.js';
 import { examenDe, finDe, GRACIA_MS, examenAbiertoDe } from './examen.js';
 import { hayOral, visualQa } from './oral.js';
+import { createHash } from 'node:crypto';
+import { itemDeTarjeta } from './oral-vivo.js';
 
 const claveAlumno = id => `academia.repaso_final.${Number(id)}`;
 const esObjeto = v => v != null && typeof v === 'object' && !Array.isArray(v);
@@ -156,4 +158,34 @@ export function reiniciarOralRepasoFinal(db, usuarioId, paquete, { materia = nul
   const oral = Object.fromEntries(Object.entries(yo.oral).filter(([id]) => materia != null && !id.startsWith(`${materia}/`)));
   guardarAlumno(db, usuarioId, { ...yo, oral });
   return { marcadas: Object.keys(oral).length };
+}
+
+// ---------- 0.14.116: «Responder con mis palabras» (lo pidió el dueño) ----------
+// Además de «Ver respuesta» y «La sabía / No la sabía»: el alumno responde con sus palabras (escribe o dicta) y la IA lo
+// compara con el libro (la respuesta de ESA tarjeta, tal cual, y las del capítulo: src/academia/oral-vivo.js,
+// materialCalificar). Las rutas están en src/api/oral-vivo.js (con el estado de la IA, el cobro y la fila del instructor).
+// Solo las tarjetas del libro con su respuesta (las «para practicar en voz alta» no la traen: ahí no se ofrece).
+export const PALABRAS = Object.freeze({ letras: 1200 });
+export function tarjetaParaPalabras(paquete, tarjeta) {
+  if (typeof tarjeta !== 'string') return null;
+  const k = /\/q(\d+)$/.exec(tarjeta);
+  const x = k ? tarjetasOral(paquete).find(y => y.id === tarjeta && !y.adicional && y.respuesta_en) : null;
+  const it = x ? itemDeTarjeta(paquete, x.materia, x.tema, Number(k[1])) : null;
+  return it ? { x, it } : null;
+}
+// Lo que respondió, limpio (sin espacios de más; hasta 1200 letras, lo mismo que llega a la IA).
+export const textoPalabras = texto => String(texto ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, PALABRAS.letras);
+// La clave de lo que dice la IA de ESA respuesta: la misma tarjeta, la misma respuesta del libro y el mismo texto (sin
+// mayúsculas ni espacios de más) → la misma clave. Así nunca se cobra dos veces lo mismo (pedirIa: yaPagado) y, si ya
+// está, se ve sin pedir nada. Va con las de la práctica en vivo (academia.ia.vivo.<id>.<número>): las de la práctica son
+// de 16 cifras (la hora + 3); estas, de 18 y empiezan con 9 (nunca se cruzan).
+export function clavePalabras(usuarioId, x, texto) {
+  const hex = createHash('sha256').update(JSON.stringify([x.id, x.respuesta_en ?? '', textoPalabras(texto).toLowerCase()])).digest('hex').slice(0, 14);
+  return `academia.ia.vivo.${Number(usuarioId)}.9${BigInt(`0x${hex}`).toString().padStart(17, '0')}`;
+}
+// Lo que se ve de lo que dijo la IA: el veredicto («bien / casi / falta»: «mal» se muestra «Falta»), la idea clave, lo que
+// dijo bien y lo que faltó; y lo que se le sugiere marcar (él decide): «La sabía» solo con «bien».
+export function vistaPalabras(g) {
+  if (!g || !['bien', 'casi', 'mal'].includes(g.veredicto)) return null;
+  return { estado: 'lista', veredicto: g.veredicto, idea: g.linea || '', bien: g.bienDicho || '', falto: g.falto || '', sugerida: g.veredicto === 'bien' };
 }

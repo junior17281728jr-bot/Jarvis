@@ -5366,7 +5366,15 @@ const ayudasRepasoFinal = () => ({ entradaJuego: () => entradaJuego('entrada-jue
   vistaVisual, usuario: estado.usuario?.id ?? 0, recoInstructor: () => lugarInstructor(v => v.recomendacionRepaso()), // 0.14.3; 0.14.34: la recomendación
   // 0.14.108: la voz del oral (la misma de las clases: un audio guardado → uno nuevo → la voz del teléfono) y la misma
   // preferencia «Con voz / Sin voz» de Configuración; «¿Cómo funciona?» abre su explicación (también en la Ayuda).
-  voz: { lector: lector(), encendida: vozGuardada, poner: si => ponerVoz(api, si) }, ayudaVozOral });
+  voz: { lector: lector(), encendida: vozGuardada, poner: si => ponerVoz(api, si) }, ayudaVozOral, ayudaPalabras });
+// 0.14.116: «¿Qué hace?» de «Responder con mis palabras» (también en la Ayuda).
+function ayudaPalabras() {
+  const b = queEs('oral_palabras');
+  b.classList.add('rf-pal-que', 'con-texto');
+  b.setAttribute('aria-label', t('rf.pal.que_hace_aria'));
+  b.append(el('span', { texto: t('rf.pal.que_hace') }));
+  return b;
+}
 function ayudaVozOral() {
   const b = queEs('voz_oral');
   b.classList.add('rf-voz-como', 'con-texto');
@@ -5420,10 +5428,11 @@ async function pantallaRondaFinal(id) {
 async function pantallaOralFinal(materia) {
   const vigente = nuevoTurno();
   // 0.14.108: con la preferencia de voz ya leída (si no, al entrar directo diría «Sin voz» a quien la tiene encendida).
-  const [r, vista] = await Promise.all([api('GET', '/api/academia/repaso-final/oral'), import('./repaso-final-vista.js'), vozEncendida(api)]);
+  // 0.14.116: y si la corrección con IA de «Responder con mis palabras» está para él ahora (si no se sabe: apagada).
+  const [[r, vista], ia] = await Promise.all([Promise.all([api('GET', '/api/academia/repaso-final/oral'), import('./repaso-final-vista.js'), vozEncendida(api)]), api('GET', '/api/academia/repaso-final/oral/ia')]);
   if (!vigente()) return;
   if (!r.ok) return errorRepasoFinal(r);
-  vista.rondaOralFinal(r.datos, materia, ayudasRepasoFinal());
+  vista.rondaOralFinal({ ...r.datos, ia: ia.ok ? ia.datos : null }, materia, ayudasRepasoFinal());
 }
 
 async function pantallaExamen(materia) {
@@ -7115,7 +7124,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'repaso') return ['/api/academia/repaso-final'];
   const rondaFinal = seccion.match(/^repaso\/test-guide\/(\d+)$/);
   if (rondaFinal) return [`/api/academia/repaso-final/ronda/${encodeURIComponent(rondaFinal[1])}`];
-  if (/^repaso\/oral(?:\/[a-z0-9_-]+)?$/.test(seccion)) return ['/api/academia/repaso-final/oral'];
+  if (/^repaso\/oral(?:\/[a-z0-9_-]+)?$/.test(seccion)) return ['/api/academia/repaso-final/oral', '/api/academia/repaso-final/oral/ia']; // 0.14.116: y si hay IA para «Responder con mis palabras»
   const video = seccion.match(/^video\/([a-z0-9_-]+)(?:\/(?:primera|tema)\/[a-z0-9_-]+)?$/);
   if (video) return [`/api/academia/video/${encodeURIComponent(video[1])}`];
   // 0.12.0: lo extra de una materia.

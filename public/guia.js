@@ -13,10 +13,12 @@ export const TEMAS_AYUDA = Object.freeze([
   'paquete', 'racha', 'repaso',
   // 0.14.108: la voz del oral del Repaso final («Con voz / Sin voz», «Tú controlas / Manos libres»).
   'voz_oral',
+  // 0.14.116: «Responder con mis palabras» (la IA compara tu respuesta con el libro).
+  'oral_palabras',
 ]);
 // 0.14.54: las que sirven a un ALUMNO (la Ayuda de quien no es administrador no explica copias, servidor, Telegram,
 // Tailscale, tokens…: eso es del administrador).
-export const TEMAS_ALUMNO = Object.freeze(['racha', 'repaso', 'voz_oral']);
+export const TEMAS_ALUMNO = Object.freeze(['racha', 'repaso', 'voz_oral', 'oral_palabras']);
 export const temasAyudaPara = esAdmin => (esAdmin ? TEMAS_AYUDA : TEMAS_AYUDA.filter(id => TEMAS_ALUMNO.includes(id)));
 // Las que traen ejemplo.
 export const TEMAS_CON_EJEMPLO = Object.freeze(['proyecto', 'modo_seguro', 'copia_comprobada', 'clave_recuperacion', 'token', 'tope', 'clave_temporal']);

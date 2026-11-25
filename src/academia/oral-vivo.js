@@ -57,6 +57,14 @@ function itemDe(paquete, it) {
   if (!x || huella(x.pregunta_en) !== it.h) return null; // el contenido cambió: esa pregunta ya no está
   return { m, t, x };
 }
+// 0.14.116: la pregunta del libro de una tarjeta del Repaso final, como la de una práctica en vivo ({ m, t, i, h }): así
+// «Responder con mis palabras» se califica con lo mismo (materialCalificar). null si no tiene respuesta del libro.
+export function itemDeTarjeta(paquete, materia, tema, i) {
+  const t = paquete?.oral?.materias?.find(x => x.id === materia)?.temas.find(x => x.id === tema);
+  const x = t?.libro_qa?.[i];
+  if (!x || !qaDe(t).some(y => y.i === i)) return null;
+  return { m: materia, t: tema, i, h: huella(x.pregunta_en) };
+}
 // Lo que se ve al preguntar: SOLO la pregunta (nunca su respuesta, su explicación ni sus puntos clave).
 const vistaPregunta = (paquete, it, i) => {
   const d = itemDe(paquete, it);
