@@ -448,3 +448,94 @@ function cifrasCompletas(x, { idioma, maxTemas }) {
     botones_que_pone_la_app: x.botones.map(b => ({ que: QUE_BOTON[b.tipo], tema: b.titulo ?? (b.tipo === 'examen' ? nm(b.materia) : null) })),
   };
 }
+
+// ---------- 0.14.109: «¿Cómo voy?» — el balance sincero (pedido del dueño) ----------
+// «Debe responder como humano: hasta ahora has hecho tal tema, completaste estos, empezaste este otro; para mejorar haz
+// esto y esto, y por qué. Corto y sencillo». Puro: con o sin IA es la misma lectura (sin IA, estas líneas SON la
+// respuesta; con IA, van en «estudio.balance» y la IA solo las dice con sus palabras, sin cambiar un número).
+// Nunca juzga con poquitas respuestas: un tema «flojo» o «fuerte» pide al menos MINIMO_BALANCE respuestas.
+export const MINIMO_BALANCE = 4;
+const PREGUNTA_BALANCE = /\b(c[oó]mo\s+(voy|vamos|me\s+(ha|han|est[aá]|va|fue)\s*(ido|yendo|n)?|estoy|ando|me\s+ves)|mi\s+(progreso|avance|nivel|balance)|qu[eé]\s+me\s+falta|en\s+qu[eé]\s+(voy|estoy)|seg[uú]n\s+tus\s+(palabras|n[uú]meros)|how\s+am\s+i\s+doing|my\s+progress|how\s+(i'?m|am\s+i)\s+(doing|going))\b/i;
+export const esPreguntaBalance = mensaje => PREGUNTA_BALANCE.test(String(mensaje ?? '').slice(0, 300));
+
+// h: historialEstudio. → { tg: { total, completadas: [id], enCurso: [{ materia, temas, hechos }], sinEmpezar, bien, de },
+// fuerte, flojos: [{ titulo, bien, de, materia, tema }], examenCaido, oral, repasos, haceDias } o null.
+export function balanceAlumno(h) {
+  if (!h) return null;
+  const completadas = [], enCurso = [];
+  let sinEmpezar = 0, bien = 0, de = 0;
+  const vistos = [];
+  for (const m of h.materias) {
+    const hechos = m.temas.filter(t => t.estado === 'aprobado').length;
+    const tocados = m.temas.filter(t => t.clase || t.estudio.de || t.examen.de).length;
+    for (const t of m.temas) {
+      const b = t.estudio.bien + t.examen.bien, d = t.estudio.de + t.examen.de;
+      bien += b; de += d;
+      if (d >= MINIMO_BALANCE) vistos.push({ materia: m.materia, tema: t.tema, titulo: t.titulo, bien: b, de: d, dominio: t.dominio ?? pct(b, d) });
+    }
+    if (m.examen?.aprobado) completadas.push(m.materia);
+    else if (tocados || m.examen) enCurso.push({ materia: m.materia, temas: m.temas.length, hechos });
+    else sinEmpezar++;
+  }
+  const flojos = vistos.filter(t => t.dominio < FLOJO).sort((a, b) => a.dominio - b.dominio || b.de - a.de).slice(0, 2);
+  const fuerte = vistos.filter(t => t.dominio >= 85).sort((a, b) => b.dominio - a.dominio || b.de - a.de)[0] ?? null;
+  const caido = h.materias.find(m => m.examen && !m.examen.aprobado);
+  let oral = null;
+  if (h.oral) {
+    const caps = h.oral.materias;
+    const empezados = caps.filter(c => c.bien || c.examen?.veces || c.pct > 0);
+    oral = { total: caps.length, empezados: empezados.length, aprobados: caps.filter(c => c.examen?.aprobado).length, errores: h.oral.errores };
+  }
+  return {
+    tg: { total: h.materias.length, completadas, enCurso, sinEmpezar, bien, de },
+    fuerte: fuerte ? { titulo: fuerte.titulo, bien: fuerte.bien, de: fuerte.de } : null,
+    flojos: flojos.map(({ dominio, ...x }) => x),
+    examenCaido: caido ? { materia: caido.materia, pct: caido.examen.ultimo } : null,
+    oral, repasos: h.repasos ?? 0, haceDias: h.haceDias,
+  };
+}
+
+// Las líneas (claves «profe.bal.*» de public/i18n; los nombres de materia van por su id y la pantalla los traduce):
+// 1) lo hecho (completadas, empezadas, sin empezar); 2) cómo te va (aciertos, lo fuerte); 3) lo que cuesta; 4) qué hacer
+// y por qué (1–2 pasos). → [{ clave, vars }]
+export function lineasBalance(b) {
+  if (!b) return [{ clave: 'profe.sin_datos', vars: {} }];
+  const L = [];
+  const { tg } = b;
+  if (!tg.de && !tg.completadas.length && !tg.enCurso.length) return [{ clave: 'profe.bal.nada', vars: { total: tg.total } }];
+  // 1) Lo hecho.
+  const curso = tg.enCurso.slice(0, 2);
+  const nombres = ids => ids.join(' · ');
+  if (tg.completadas.length) L.push({ clave: 'profe.bal.completaste', vars: { n: tg.completadas.length, total: tg.total, materias: nombres(tg.completadas.slice(0, 3)) } });
+  else L.push({ clave: 'profe.bal.ninguna', vars: { total: tg.total } });
+  if (curso.length) L.push({ clave: curso.length > 1 ? 'profe.bal.empezaste_dos' : 'profe.bal.empezaste', vars: { materias: nombres(curso.map(c => c.materia)), hechos: curso[0].hechos, temas: curso[0].temas, faltan: tg.sinEmpezar } });
+  // 2) Cómo te va.
+  if (tg.de) L.push({ clave: b.fuerte ? 'profe.bal.aciertos_fuerte' : 'profe.bal.aciertos', vars: { pct: pct(tg.bien, tg.de), bien: tg.bien, de: tg.de, ...(b.fuerte ? { tema: b.fuerte.titulo } : {}) } });
+  // 3) Lo que cuesta (con suficientes respuestas) y el examen que no pasó (si no hay nada flojo, o hay lugar).
+  if (b.flojos.length) L.push({ clave: b.flojos.length > 1 ? 'profe.bal.cuesta_dos' : 'profe.bal.cuesta', vars: { tema: b.flojos[0].titulo, bien: b.flojos[0].bien, de: b.flojos[0].de, ...(b.flojos[1] ? { tema2: b.flojos[1].titulo, bien2: b.flojos[1].bien, de2: b.flojos[1].de } : {}) } });
+  if (b.examenCaido && L.length < 4) L.push({ clave: 'profe.bal.examen', vars: { materia: b.examenCaido.materia, pct: b.examenCaido.pct } });
+  if (b.oral?.total && L.length < 5) L.push({ clave: b.oral.empezados ? 'profe.bal.oral' : 'profe.bal.oral_nada', vars: { n: b.oral.empezados, total: b.oral.total } });
+  // 4) Qué hacer, y por qué (siempre; corto: 6 líneas como mucho).
+  const haz = b.flojos.length ? { clave: 'profe.bal.haz_flojo', vars: { tema: b.flojos[0].titulo } }
+    : b.examenCaido ? { clave: 'profe.bal.haz_examen', vars: { materia: b.examenCaido.materia } }
+      : tg.enCurso.length ? { clave: 'profe.bal.haz_seguir', vars: { materia: tg.enCurso[0].materia } }
+        : { clave: 'profe.bal.haz_nueva', vars: {} };
+  L.splice(5);
+  L.push(haz);
+  if (b.repasos > 0 && L.length < 6) L.push({ clave: 'profe.bal.haz_repaso', vars: { n: b.repasos } });
+  return L;
+}
+
+// Para la IA: el mismo balance con los NOMBRES de las materias (nunca ids).
+export function balanceParaIa(b, { idioma = 'es' } = {}) {
+  if (!b) return null;
+  const nm = id => nombreMateria(id, idioma) ?? 'una materia';
+  return {
+    materias_del_test_guide: b.tg.total, completadas_examen_aprobado: b.tg.completadas.map(nm),
+    empezadas: b.tg.enCurso.map(c => ({ materia: nm(c.materia), temas_aprobados: c.hechos, de_temas: c.temas })), sin_empezar: b.tg.sinEmpezar,
+    preguntas: { bien: b.tg.bien, de: b.tg.de, pct: pct(b.tg.bien, b.tg.de) }, lo_mejor: b.fuerte, le_cuesta: b.flojos.map(f => ({ tema: f.titulo, bien: f.bien, de: f.de })),
+    examen_no_pasado: b.examenCaido ? { materia: nm(b.examenCaido.materia), ultimo_pct: b.examenCaido.pct } : null,
+    oral: b.oral ? { capitulos: b.oral.total, empezados: b.oral.empezados, aprobados: b.oral.aprobados, por_corregir: b.oral.errores } : null,
+    repasos_de_hoy: b.repasos, dias_sin_estudiar: b.haceDias,
+  };
+}

@@ -831,7 +831,7 @@ export function crearInstructor(h) {
   // ---------- 0.14.22: lo que lee el profesor de su historia (sin IA) y sus botones ----------
   // lineas: [{ clave: 'profe.…', vars }] (las arma src/academia/profe-chat.js); botones: de un juego cerrado de tipos, con
   // el destino armado AQUÍ (el servidor ya los revisó: tema abierto, examen que existe, errores que existen…).
-  const varsProfe = v => Object.fromEntries(Object.entries(v ?? {}).map(([k, x]) => [k, k === 'materia' ? nombreMateria(x) : k === 'tema' || k === 'temas' ? String(x ?? '').split(' · ').map(sinIngles).join(' · ') : typeof x === 'number' ? numero(x) : x]));
+  const varsProfe = v => Object.fromEntries(Object.entries(v ?? {}).map(([k, x]) => [k, k === 'materia' ? nombreMateria(x) : k === 'materias' ? String(x ?? '').split(' · ').filter(Boolean).map(nombreMateria).join(', ') : k === 'tema' || k === 'temas' ? String(x ?? '').split(' · ').map(sinIngles).join(' · ') : typeof x === 'number' ? numero(x) : x]));
   const textoProfe = p => (p?.lineas ?? []).map(l => (Number(l.vars?.n) === 1 ? tn(l.clave, varsProfe(l.vars)) : tx(l.clave, varsProfe(l.vars)))).join('\n');
   const ID_RUTA = /^[a-z0-9_-]{1,64}$/;
   // 0.14.39: { pastilla: true } = un botón compacto del chat de «Tu instructor» (sin mayúsculas); etiqueta = otro texto

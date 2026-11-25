@@ -35,7 +35,7 @@ import { tiempoDe } from './pagos.js';
 import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube, respondidasParecidas } from '../academia/profesor.js';
 import { armarChat } from '../academia/instructor-ia.js';
 import { diagnostico, cifrasConsejo, consejoParaVer } from '../academia/consejo-ia.js';
-import { profe as leerProfe, cifrasProfe, validarBotones, resumenInstructor, cambiosVista, recomendacion } from '../academia/profe-chat.js';
+import { profe as leerProfe, cifrasProfe, validarBotones, resumenInstructor, cambiosVista, recomendacion, esPreguntaBalance, balanceAlumno, lineasBalance, balanceParaIa } from '../academia/profe-chat.js';
 import { vistaSecciones } from '../academia/progreso.js';
 import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
@@ -755,7 +755,10 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const pf = resumenInstructor(db, usuario.id, p, ahora, { donde: ctx.materia ? { materia: ctx.materia, tema: ctx.tema } : null });
     // «Guíame» (con el tema abierto que dice el botón): explicarlo con OTRAS palabras que la clase.
     const guia = datos?.guia === true && Boolean(forzado);
-    const profe = { lineas: pf.lineas, botones: pf.botones };
+    // 0.14.109: «¿Cómo voy?»: el balance sincero (lo hecho, lo que cuesta, qué hacer y por qué). Sin IA es la respuesta;
+    // con IA va en «estudio.balance» para que lo diga con sus palabras (sin cambiar un número).
+    const balance = !forzado && esPreguntaBalance(mensaje) ? balanceAlumno(pf.historial) : null;
+    const profe = { lineas: balance ? lineasBalance(balance) : pf.lineas, botones: pf.botones };
     // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual. 0.12.4: el mensaje y la
     // respuesta básica quedan en su historial (antes se perdían al recargar); sin IA por algo que no se pasa solo, ia = null.
     if (instructor.modo !== 'ia') {
@@ -780,6 +783,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     let preguntas = ctx.preguntas;
     let material = ctx.material;
     let estudio = cifrasProfe(pf, { idioma: usuario.idioma });
+    if (balance && estudio) estudio = { ...estudio, balance: balanceParaIa(balance, { idioma: usuario.idioma }) };
     let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio, guia });
     // (0.14.22: su historia ya tiene tope de tamaño; si igual no cabe, se le quitan temas antes de acortar la clase,
     // hasta dejar 2; nunca se pierde lo que no cuadra ni los botones)
