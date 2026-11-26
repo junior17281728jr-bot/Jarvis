@@ -673,3 +673,27 @@ test('0.14.127: la gravedad y la energía como en un avión de entrenamiento (pl
   let dA = null; for (let i = 0; i < 100; i++) dA = D.desgastePaso(dA, { kt: 95, flaps: 1, dt: 0.1, asistente: true }).danos;
   assert.equal(D.listaDanos(dA).length, 0);
 });
+
+test('0.14.129: la cabina 3D sin esquinas falsas (curvas, costados tapizados, techo con costuras, sombras de rincón) y armada una vez', async () => {
+  const C3 = await import('../public/clase/cabina3d.js');
+  // Lo fijo se arma una sola vez por hora del día (la misma lista); lo que se mueve (yugos, perillas), en cada cuadro.
+  assert.equal(C3.piezasFijasCabina('dia'), C3.piezasFijasCabina('dia'));
+  assert.notEqual(C3.piezasFijasCabina('dia'), C3.piezasFijasCabina('noche'));
+  const fijas = C3.piezasFijasCabina('dia');
+  assert.ok(fijas.length > 350, `piezas fijas: ${fijas.length}`);
+  // Sombras de rincón (transparentes, sin luz) y nada que se pise con el tablero: lo que va sobre él, apenas delante.
+  assert.ok(fijas.filter(f => f.extra.luz === 0 && f.extra.a < 0.3).length >= 10, 'rincones en sombra');
+  const T = C3.CABINA3D.tablero, xT = y => T.xArriba + (T.xAbajo - T.xArriba) * ((y - T.yArriba) / (T.yAbajo - T.yArriba));
+  const sobreTablero = fijas.filter(f => f.extra.luz === 0 && f.p.every(v => Math.abs(v[2]) <= T.ancho + 1e-9 && v[1] < T.yArriba && v[1] > T.yAbajo && Math.abs(v[0] - xT(v[1])) < 0.05));
+  assert.ok(sobreTablero.length >= 2 && sobreTablero.every(f => f.p.every(v => v[0] < xT(v[1]) - 0.004)), 'delante del tablero');
+  // Las esquinas del tablero llegan a la pared (sin hueco) y la visera va de pared a pared.
+  assert.ok(fijas.some(f => f.p.some(v => Math.abs(Math.abs(v[2]) - 1.9) < 1e-6 && v[1] < T.yArriba && v[1] > T.yAbajo && v[0] > 2.3)));
+  // El techo es curvo (más alto en el medio).
+  const techo = fijas.filter(f => f.p.every(v => v[1] > 1.14 && v[1] < 1.3 && v[0] <= 1.5 && v[0] >= -2.1));
+  assert.ok(Math.max(...techo.flatMap(f => f.p.map(v => v[1]))) - Math.min(...techo.flatMap(f => f.p.map(v => v[1]))) > 0.08);
+  // El teléfono de lado: un toque en el tablero lo acerca (y vuelve solo).
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /if \(tactil && deLado\(\) && vista === 'cabina' && usa3d\(\) && \(zoomTablero\.meta \|\| e\.clientY > r\.top \+ r\.height \* 0\.5\)\) ponerZoomTablero\(!zoomTablero\.meta\);/);
+  assert.match(vista, /zoomTablero\.hasta = si \? performance\.now\(\) \+ 8000 : 0;/);
+  assert.match(vista, /let cabina3dOn = false;/, 'sigue en prueba');
+});

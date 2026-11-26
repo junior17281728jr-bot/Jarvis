@@ -4,11 +4,11 @@
 // cabina (clase/cabina.js) y el mundo (clase/juego-mundo.js). Sin IA y sin pedir nada al servidor.
 // Mandos: en la PC, el teclado; en el teléfono, un yugo para arrastrar y la palanca de potencia. «?» los muestra otra vez.
 import { crearBucle, prefiereMenosMovimiento } from './clase/comun.js';
-import { crearCamara, ojoOrbita, baseAvion, suma, por, render, crearTexturas, mezclarAngulo, proyectar } from './clase/motor3d.js';
+import { crearCamara, ojoOrbita, baseAvion, suma, resta, por, render, crearTexturas, mezclarAngulo, proyectar } from './clase/motor3d.js';
 import { crearRenderGL } from './clase/motor3d-gl.js';
 import { PALETAS } from './clase/e3d-base.js';
 import { dibujarCabina, dibujarLadoCabina, dibujarRelojesAfuera, dibujarGrieta, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
-import { primitivasCabina3d, relojesCabina3d, baseCabina } from './clase/cabina3d.js';
+import { primitivasCabina3d, relojesCabina3d, baseCabina, CABINA3D, OJO_Z } from './clase/cabina3d.js';
 import { activarToques, bloquearZoom } from './clase/juego-tactil.js';
 import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua, LIMITES } from './clase/vuelo-modelo.js';
 import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz, ESCALA_AVION, ALTO_RUEDAS } from './clase/juego-mundo.js';
@@ -553,6 +553,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // sin WebGL, en las mini-clases para mirar o en la repetición, la dibujada. «Cabina 3D» en el Menú.
   let cabina3dOn = false; // (0.14.125: en prueba: apagada al empezar, se elige en el Menú)
   const usa3d = () => Boolean(gl3) && cabina3dOn && !mc?.fov && !repe;
+  const zoomTablero = { meta: 0, k: 0, hasta: 0 };
+  function ponerZoomTablero(si) { zoomTablero.meta = si ? 1 : 0; zoomTablero.hasta = si ? performance.now() + 8000 : 0; raiz.setAttribute('data-zoom-tablero', si ? '1' : '0'); }
   const MIRADA_3D = 4; // (el horizonte cerca del medio; el tablero en el tercio de abajo)
   function medir() {
     const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, tactil ? 1.6 : 2) * calidad;
@@ -574,7 +576,16 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       cabeza = { y: cabeza.y + (metaY - cabeza.y) * 0.15, x: cabeza.x + (metaX - cabeza.x) * 0.15 };
       const ojo = suma(suma(B.ojo, por(bv.U, cabeza.y)), por(bv.R, cabeza.x));
       const yw = (orbita.cabYaw * Math.PI) / 180, pt = (orbita.cabPitch * Math.PI) / 180;
-      const dir = suma(suma(por(bv.F, Math.cos(yw) * Math.cos(pt)), por(bv.R, Math.sin(yw) * Math.cos(pt))), por(bv.U, Math.sin(pt)));
+      let dir = suma(suma(por(bv.F, Math.cos(yw) * Math.cos(pt)), por(bv.R, Math.sin(yw) * Math.cos(pt))), por(bv.U, Math.sin(pt)));
+      // 0.14.129: el teléfono de lado: un toque en el tablero lo acerca unos segundos (la mirada baja a los relojes y se cierra el
+      // campo); otro toque, o a los 8 s, vuelve.
+      if (zoomTablero.hasta && performance.now() > zoomTablero.hasta) zoomTablero.meta = 0;
+      zoomTablero.k += (zoomTablero.meta - zoomTablero.k) * Math.min(1, dtCuadro * (reducir ? 60 : 6));
+      if (zoomTablero.k > 0.001) {
+        const centro = B.W(CABINA3D.tablero.xArriba - 0.08, -0.87, OJO_Z), haciaT = resta(centro, ojo), lt = Math.hypot(...haciaT) || 1, k = zoomTablero.k;
+        dir = suma(por(dir, 1 - k), por(haciaT, k / lt));
+        return crearCamara({ ojo, mira: suma(ojo, dir), arriba: bv.U, fov: fov * (1 - 0.48 * k), cerca: 0.0004 });
+      }
       return crearCamara({ ojo, mira: suma(ojo, dir), arriba: bv.U, fov, cerca: 0.0004 });
     }
     if (vista === 'cabina') {
@@ -1856,8 +1867,13 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (e.type !== 'pointerup' || Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 10 || performance.now() - d.t0 > 300) return;
     // Doble toque en el paisaje: centrar.
     const ahora = performance.now();
-    if (ahora - ultimoToqueEscena.t < 350 && Math.hypot(e.clientX - ultimoToqueEscena.x, e.clientY - ultimoToqueEscena.y) < 40) { centrarCamara(); ultimoToqueEscena = { t: -1e9, x: 0, y: 0 }; }
-    else ultimoToqueEscena = { t: ahora, x: e.clientX, y: e.clientY };
+    if (ahora - ultimoToqueEscena.t < 350 && Math.hypot(e.clientX - ultimoToqueEscena.x, e.clientY - ultimoToqueEscena.y) < 40) { centrarCamara(); zoomTablero.meta = 0; ultimoToqueEscena = { t: -1e9, x: 0, y: 0 }; }
+    else {
+      ultimoToqueEscena = { t: ahora, x: e.clientX, y: e.clientY };
+      // (0.14.129: en el teléfono de lado, con la cabina 3D, un toque en el tablero lo acerca; otro toque lo aleja)
+      const r = lienzo.getBoundingClientRect();
+      if (tactil && deLado() && vista === 'cabina' && usa3d() && (zoomTablero.meta || e.clientY > r.top + r.height * 0.5)) ponerZoomTablero(!zoomTablero.meta);
+    }
   };
   for (const tipo of ['pointerup', 'pointercancel', 'lostpointercapture']) lienzo.addEventListener(tipo, soltarEscena);
   lienzo.addEventListener('wheel', e => { if (cabinaLibre()) return; e.preventDefault(); tocarOrbita(zoomOrbita(orbita, Math.exp(Math.max(-200, Math.min(200, e.deltaY)) * 0.0015))); }, { passive: false });
@@ -1947,7 +1963,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // Para las capturas y las pruebas: poner el avión en un estado y dibujar ya (también en raiz.juego, para las capturas).
   const control = {
-    raiz, destruir, reiniciar, get orbita() { return orbita; }, tostar(i, x) { tostada(i, x, 'mal'); }, get limites() { return limitesOn; }, ponerLimites(si) { ponerLimites(si); }, ponerCabina3d(si) { cabina3dOn = Boolean(si); pintarBotones(); }, ponerPajaros(si) { pajarosOn = Boolean(si); proximaBandada = tiempo; pintarBotones(); }, get bandadas() { return bandadas; }, ponerRelampago(k) { relampago = k; }, get asistente() { return asistente; }, ponerAsistente(si) { asistente = Boolean(si); pintarBotones(); }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
+    raiz, destruir, reiniciar, get orbita() { return orbita; }, tostar(i, x) { tostada(i, x, 'mal'); }, ponerZoomTablero, get zoomTablero() { return zoomTablero; }, get limites() { return limitesOn; }, ponerLimites(si) { ponerLimites(si); }, ponerCabina3d(si) { cabina3dOn = Boolean(si); pintarBotones(); }, ponerPajaros(si) { pajarosOn = Boolean(si); proximaBandada = tiempo; pintarBotones(); }, get bandadas() { return bandadas; }, ponerRelampago(k) { relampago = k; }, get asistente() { return asistente; }, ponerAsistente(si) { asistente = Boolean(si); pintarBotones(); }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
     ponerTrafico(tipo) { trafico = [{ ...crearTrafico(tipo, avion), fase: 0.3 }]; return trafico[0]; },
     get guiado() { return guiado; }, get puntaje() { return puntaje; }, get pool() { return pool; }, get flujo() { return flujo; }, get faseClase() { return faseClase; }, responderClase,
     get trafico() { return trafico; }, ponerMandos(m) { Object.assign(mandos, m); pintarPotencia(); }, verMapa(lejos) { mapaLejos = Boolean(lejos); pintarMapas(); dibujarMapa(); },
