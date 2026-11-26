@@ -716,6 +716,21 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.115: el mundo de las escenas 3D, más real — sin cambio de base
+
+- **El suelo como se ve desde un avión** (shader de `motor3d-gl.js`): parcelas en filas desparejas, cada una con su
+  cultivo (pasto, verde oscuro, trigo, tierra arada, verde claro), surcos, cercos de árboles en los bordes y manchas
+  grandes suaves; cada detalle se apaga cuando es más chico que un píxel (sin rayas ni brillo a lo lejos). El terreno
+  lleva el color de cada esquina (`cs` en `terreno()`): con WebGL los bosques y la orilla se funden, sin cuadros.
+- **El agua** refleja el cielo (más de costado, Fresnel) y brilla con el sol.
+- **La pista**: el número de cada cabecera (AIM 2-3-3: el rumbo magnético redondeado a la decena, sin el último cero;
+  `numeroPista`, `bloquesNumero` en `e3d-base.js`), derecho para quien llega; al atardecer, en el circuito, las luces
+  blancas de los bordes (AIM 2-1-4; `aeropuerto({ lucesPista: true })`, el juego pone las suyas).
+- **Líneas largas**: un tramo que pasa por detrás de la cámara se parte en pedazos (antes la línea del borde de la pista
+  se veía a través del avión).
+- **Consecuencias**: la etiqueta de arriba ya no queda debajo del mini-mapa y las etiquetas del lienzo lo esquivan; el
+  botón «Repetir» ya no se corta abajo. Pruebas: `test/mundo-3d.test.js`.
+
 ### Lo nuevo de la 0.14.114: el avión 3D, más real — sin cambio de base
 
 - **Pedido del dueño:** «el avión debe verse más real». Se buscó un modelo 3D libre (CC0) de un entrenador de ala alta;

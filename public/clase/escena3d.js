@@ -244,7 +244,8 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     // Las etiquetas no van debajo de la etiqueta de arriba ni de la ayuda.
     const evitar = [];
     // (se miden solo cuando cambian: leer el tamaño en cada cuadro obliga al navegador a rehacer la página)
-    if (!cajasDom) cajasDom = [chip, ayuda].map(n => (!n.hidden && n.offsetWidth ? { n, x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight } : null)).filter(Boolean);
+    // 0.14.115: también el mini-mapa de una consecuencia (situacion3d.js lo pone en la caja): las etiquetas no van debajo.
+    if (!cajasDom) cajasDom = [chip, ayuda, caja.querySelector?.('.clase-sit-mapa')].map(n => (n && !n.hidden && n.offsetWidth ? { n, x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight } : null)).filter(Boolean);
     for (const c of cajasDom) if (!(c.n === ayuda && (mezcla > 0.5 || ayuda.hidden))) evitar.push({ x: c.x * escalaPx / ajustePx, y: c.y * escalaPx / ajustePx, w: c.w * escalaPx / ajustePx, h: c.h * escalaPx / ajustePx });
     if (mezcla < 0.6 && escena.conAvion !== false && !p.sinAvion) {
       const d = largo(resta(cam3.ojo, avion.pos));
@@ -313,6 +314,9 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     if (!jugando && kOrbita >= 1 && mezcla === mezclaMeta && !arrastre) bucle.detener();
   });
   const pedir = () => bucle.iniciar();
+  // Al agrandar o achicar el mini-mapa (se toca), se vuelve a medir lo que las etiquetas esquivan.
+  caja.addEventListener?.('transitionend', () => { cajasDom = null; pedir(); });
+  caja.addEventListener?.('click', () => { cajasDom = null; pedir(); });
 
   // ---------- el dedo, el ratón y el teclado ----------
   const toques = new Map();

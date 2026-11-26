@@ -191,12 +191,13 @@ export function ruido(x, z, semilla = 7) {
 export function terreno({ x0, z0, x1, z1, n = 24, altura = () => 0, color = () => [120, 160, 100], grilla = null }) {
   const out = [];
   const X = i => x0 + ((x1 - x0) * i) / n, Z = j => z0 + ((z1 - z0) * j) / n;
-  const alt = [];
-  for (let i = 0; i <= n; i++) { alt.push([]); for (let j = 0; j <= n; j++) alt[i].push(altura(X(i), Z(j))); }
+  const alt = [], col = [];
+  for (let i = 0; i <= n; i++) { alt.push([]); col.push([]); for (let j = 0; j <= n; j++) { alt[i].push(altura(X(i), Z(j))); col[i].push(color(X(i), Z(j), alt[i][j])); } }
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
     const p = [[X(i), alt[i][j], Z(j)], [X(i), alt[i][j + 1], Z(j + 1)], [X(i + 1), alt[i + 1][j + 1], Z(j + 1)], [X(i + 1), alt[i + 1][j], Z(j)]];
     const cx = (X(i) + X(i + 1)) / 2, cz = (Z(j) + Z(j + 1)) / 2, cy = (alt[i][j] + alt[i + 1][j + 1]) / 2;
-    out.push(poligono(p, color(cx, cz, cy), { luz: 1, borde: grilla }));
+    // c: el color del cuadro (el dibujo 2D); cs: el de cada esquina (con WebGL los colores se funden, sin cuadros).
+    out.push(poligono(p, color(cx, cz, cy), { luz: 1, borde: grilla, cs: [col[i][j], col[i][j + 1], col[i + 1][j + 1], col[i + 1][j]] }));
   }
   return out;
 }

@@ -27,15 +27,24 @@ void main() {
   // Las derivadas (fwidth) van fuera de cualquier «if»: dentro de una rama no están definidas (puntos negros).
   vec2 q0 = vPos.xz * uTex;
   float px = length(fwidth(q0));
+  // 0.14.115: el terreno como se ve desde un avión: parcelas (campos) en filas desparejas, cada una con su cultivo
+  // (pasto, verde oscuro, trigo, tierra arada, verde claro), surcos en los cultivos, bordes con cercos de árboles y
+  // manchas grandes suaves. Cada detalle se apaga cuando es más chico que un píxel (si no, a lo lejos brilla o raya).
+  vec2 g = vec2(q0.x * 1.7, q0.y * 2.1);
+  float pxg = px * 2.1;
   if (vMat.z > 0.5) {
-    // El terreno: manchas de campo, cultivos en surcos y un poco de grano (todo hecho aquí, sin imágenes).
-    // Cada detalle se apaga cuando es más chico que un píxel (si no, a lo lejos brilla como arena).
-    vec2 q = q0;
-    float a1 = clamp(1.5 - px * 1.4, 0.0, 1.0), a2 = clamp(1.5 - px * 4.6, 0.0, 1.0), a3 = clamp(1.5 - px * 16.0, 0.0, 1.0), a4 = clamp(1.5 - px * 60.0, 0.0, 1.0);
-    float k = (ruido(q * 0.7) - 0.5) * 0.5 * a1 + (ruido(q * 2.3) - 0.5) * 0.3 * a2 + (ruido(q * 7.9) - 0.5) * 0.2 * a3;
-    float parcela = ruido(floor(q * 0.9) + 0.5);
-    float surcos = sin(mod(dot(q, parcela > 0.5 ? vec2(9.0, 2.0) : vec2(2.0, 9.0)) * 6.0, 6.2831853));
-    base *= 0.96 + 0.42 * k + 0.05 * surcos * step(0.35, parcela) * a4;
+    float fila = floor(g.y);
+    vec2 gc = vec2(g.x + h(vec2(fila, 3.1)) * 7.0, g.y);
+    vec2 id = floor(gc), f = fract(gc);
+    float r = h(id + 17.0);
+    vec3 tinte = r < 0.3 ? vec3(1.0) : r < 0.48 ? vec3(0.87, 0.93, 0.85) : r < 0.62 ? vec3(1.12, 1.07, 0.8) : r < 0.74 ? vec3(1.07, 0.95, 0.8) : r < 0.88 ? vec3(1.06, 1.08, 0.96) : vec3(0.94, 1.0, 0.9);
+    float aCampo = 1.0 - smoothstep(0.025, 0.08, pxg), aSurco = 1.0 - smoothstep(0.006, 0.02, pxg), aBorde = 1.0 - smoothstep(0.015, 0.06, pxg);
+    float cultivo = step(0.3, r) * step(r, 0.74);
+    float surco = sin((h(id + 5.0) > 0.5 ? f.x : f.y) * 90.0) * 0.5 + 0.5;
+    vec2 e = min(f, 1.0 - f);
+    float cerco = 1.0 - smoothstep(0.01, 0.01 + pxg * 1.5, min(e.x, e.y));
+    float macro = (ruido(q0 * 0.21) - 0.5) * 0.22 * clamp(1.5 - px * 0.25, 0.0, 1.0) + (ruido(q0 * 1.7) - 0.5) * 0.1 * clamp(1.5 - px * 4.0, 0.0, 1.0);
+    base *= mix(vec3(1.0), tinte, aCampo * 0.9) * (1.0 + macro) * (1.0 - 0.07 * surco * aSurco * cultivo) * mix(1.0, 0.8, cerco * aBorde);
   }
   float luz = vMat.x;
   vec3 hemi = mix(uSuelo, uCielo, N.y * 0.5 + 0.5);
@@ -214,12 +223,13 @@ export function crearRenderGL(lienzo) {
       const n = q.n ?? (q.n = normalDe(q.p));
       const m0 = q.luz ?? 1, m1 = q.brillo ?? 0, m2 = q.terreno ? 1 : 0, m3 = q.refleja ?? 0;
       const r = q.c[0] / 255, g = q.c[1] / 255, b = q.c[2] / 255, a = q.a ?? 1;
-      const p = q.p, ns = q.ns, verts = new Array((p.length - 2) * 3 * ANCHO);
+      const p = q.p, ns = q.ns, cs = q.cs, verts = new Array((p.length - 2) * 3 * ANCHO);
       let o = 0;
       for (let i = 1; i < p.length - 1; i++) for (let t = 0; t < 3; t++) {
         const k = t === 0 ? 0 : t === 1 ? i : i + 1, v = p[k], nn = ns ? ns[k] : n;
         verts[o++] = v[0]; verts[o++] = v[1]; verts[o++] = v[2]; verts[o++] = nn[0]; verts[o++] = nn[1]; verts[o++] = nn[2];
-        verts[o++] = r; verts[o++] = g; verts[o++] = b; verts[o++] = a; verts[o++] = m0; verts[o++] = m1; verts[o++] = m2; verts[o++] = m3;
+        if (cs) { const cc = cs[k]; verts[o++] = cc[0] / 255; verts[o++] = cc[1] / 255; verts[o++] = cc[2] / 255; } else { verts[o++] = r; verts[o++] = g; verts[o++] = b; }
+        verts[o++] = a; verts[o++] = m0; verts[o++] = m1; verts[o++] = m2; verts[o++] = m3;
       }
       const destino = q.capa === 'calco' ? calco : a < 1 ? trans : opacos;
       destino.push({ verts, centro: destino === trans ? centroDe(p) : null });
@@ -288,14 +298,25 @@ export function crearRenderGL(lienzo) {
         if (A[2] < cerca && B[2] < cerca) continue;
         if (A[2] < cerca) { const t = (cerca - A[2]) / (B[2] - A[2]); A = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, cerca]; }
         if (B[2] < cerca) { const t = (cerca - A[2]) / (B[2] - A[2]); B = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, cerca]; }
-        const pa = [ancho / 2 + (f * A[0]) / A[2], alto / 2 - (f * A[1]) / A[2]], pb = [ancho / 2 + (f * B[0]) / B[2], alto / 2 - (f * B[1]) / B[2]];
-        const dx = pb[0] - pa[0], dy = pb[1] - pa[1], L = Math.hypot(dx, dy) || 1e-6, nx = (-dy / L) * w, ny = (dx / L) * w;
-        const za = ndcZ(A[2] * acerca), zb = ndcZ(B[2] * acerca);
-        const V = (x, y, z, d) => out.push((x / ancho) * 2 - 1, 1 - (y / alto) * 2, z, ...c, a, d, g[0], g[1]);
-        const d0 = dist, d1 = dist + L;
-        V(pa[0] + nx, pa[1] + ny, za, d0); V(pa[0] - nx, pa[1] - ny, za, d0); V(pb[0] + nx, pb[1] + ny, zb, d1);
-        V(pb[0] + nx, pb[1] + ny, zb, d1); V(pa[0] - nx, pa[1] - ny, za, d0); V(pb[0] - nx, pb[1] - ny, zb, d1);
-        dist = d1;
+        // 0.14.115: un tramo que va de muy cerca a muy lejos (una pista larga que pasa por detrás de la cámara) se parte en
+        // pedazos donde la distancia a lo sumo se duplica: si no, el punto de cerca queda a millones de píxeles y la
+        // profundidad se interpola mal (la línea se veía a través del avión).
+        const razon = Math.max(A[2], B[2]) / Math.max(1e-9, Math.min(A[2], B[2]));
+        const partes = razon > 2 ? Math.min(24, Math.ceil(Math.log2(razon))) : 1;
+        let P0 = A;
+        for (let k = 1; k <= partes; k++) {
+          // Pedazos con la distancia en progresión geométrica (de A a B).
+          const zk = A[2] * Math.pow(B[2] / A[2], k / partes), tk = k === partes ? 1 : (zk - A[2]) / (B[2] - A[2] || 1e-9);
+          const P1 = k === partes ? B : [A[0] + (B[0] - A[0]) * tk, A[1] + (B[1] - A[1]) * tk, A[2] + (B[2] - A[2]) * tk];
+          const pa = [ancho / 2 + (f * P0[0]) / P0[2], alto / 2 - (f * P0[1]) / P0[2]], pb = [ancho / 2 + (f * P1[0]) / P1[2], alto / 2 - (f * P1[1]) / P1[2]];
+          const dx = pb[0] - pa[0], dy = pb[1] - pa[1], L = Math.hypot(dx, dy) || 1e-6, nx = (-dy / L) * w, ny = (dx / L) * w;
+          const za = ndcZ(P0[2] * acerca), zb = ndcZ(P1[2] * acerca);
+          const V = (x, y, z, d) => out.push((x / ancho) * 2 - 1, 1 - (y / alto) * 2, z, ...c, a, d, g[0], g[1]);
+          const d0 = dist, d1 = dist + L;
+          V(pa[0] + nx, pa[1] + ny, za, d0); V(pa[0] - nx, pa[1] - ny, za, d0); V(pb[0] + nx, pb[1] + ny, zb, d1);
+          V(pb[0] + nx, pb[1] + ny, zb, d1); V(pa[0] - nx, pa[1] - ny, za, d0); V(pb[0] - nx, pb[1] - ny, zb, d1);
+          dist = d1; P0 = P1;
+        }
       }
     }
     return new Float32Array(out);

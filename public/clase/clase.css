@@ -910,7 +910,7 @@ html, body { margin: 0; }
 .clase-e3d-controles .clase-boton:disabled { opacity: .45; cursor: default; }
 .clase-e3d-hueco { min-height: 220px; display: grid; place-items: center; border-radius: 18px; background: var(--cl-tarjeta); color: var(--cl-suave); }
 /* 0.14.92: situaciones 3D (situacion3d.js): una escena con una decisión. El lienzo es el de escena3d.js, sin sus pasos. */
-.clase-e3d-sit { padding: 0; border: 0; background: transparent; gap: 8px; }
+.clase-e3d-sit { padding: 0 0 3px; border: 0; background: transparent; gap: 8px; }
 .clase-e3d-sit > .clase-e3d-titulo, .clase-e3d-sit > .clase-e3d-puntos, .clase-e3d-sit > .clase-e3d-vivo, .clase-e3d-sit > .clase-e3d-mas,
 .clase-e3d-sit > .clase-e3d-recuerda, .clase-e3d-sit .clase-e3d-anterior, .clase-e3d-sit .clase-e3d-siguiente, .clase-e3d-sit .clase-e3d-ayuda { display: none; }
 .clase-sit { box-sizing: border-box; margin: 0; padding: 12px; border-radius: 18px; background: var(--cl-tarjeta); border: 1px solid var(--cl-borde); color: var(--cl-texto); display: grid; gap: 10px; min-width: 0; }
@@ -955,6 +955,9 @@ html, body { margin: 0; }
 :root[data-tema="oscuro"] .clase-sit-mapa { --mapa-agua: rgba(70, 130, 190, 0.5); --mapa-papel: rgba(12, 20, 38, 0.92); --mapa-tinta: #eef3ff; --mapa-suave: #a9b6cf; --mapa-capa: rgba(170, 182, 205, 0.26); --mapa-anillo: #ffb340; --mapa-celda: #ff6b6b; --mapa-ruta: #6fb3ff; --mapa-pista: #e3e9f5; }
 @media (prefers-color-scheme: dark) { :root:is([data-tema="auto"], :not([data-tema])) .clase-sit-mapa { --mapa-agua: rgba(70, 130, 190, 0.5); --mapa-papel: rgba(12, 20, 38, 0.92); --mapa-tinta: #eef3ff; --mapa-suave: #a9b6cf; --mapa-capa: rgba(170, 182, 205, 0.26); --mapa-anillo: #ffb340; --mapa-celda: #ff6b6b; --mapa-ruta: #6fb3ff; --mapa-pista: #e3e9f5; } }
 @media (max-width: 560px) { .clase-sit-mapa { height: 46%; } }
+/* 0.14.115: la etiqueta de arriba no queda debajo del mini-mapa (el mapa es cuadrado: su ancho sale del alto del lienzo). */
+.clase-e3d-caja:has(> .clase-sit-mapa) .clase-e3d-estado { max-width: calc(100% - 60px - min(27.5%, 180px)); }
+@media (max-width: 560px) { .clase-e3d-caja:has(> .clase-sit-mapa) .clase-e3d-estado { max-width: calc(62% - 52px); } }
 @media (prefers-reduced-motion: reduce) { .clase-sit-mapa { transition: none; } }
 .clase-sit-mapa-lienzo { display: block; width: 100%; height: 100%; }
 .clase-sit-mapa-papel { fill: var(--mapa-papel); stroke: var(--mapa-suave); stroke-width: 1.5; }

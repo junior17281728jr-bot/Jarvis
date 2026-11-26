@@ -11,7 +11,7 @@ function iniciar() {
   const paleta = oscuro ? PALETAS.oscuro : PALETAS.claro;
   const lienzo = document.getElementById('lienzo');
   const vista = { giro: num('giro', 35), alto: num('alto', 12), dist: num('dist', 15) };
-  const suelo = [...campo({ x0: -60, z0: -60, x1: 60, z1: 60, n: 12, altura: () => 0, paleta, falda: 600 }), ...aeropuerto({ x: 6, z: 0, rumbo: 0, largo: 90, ancho: 4, paleta })];
+  const suelo = [...campo({ x0: -60, z0: -60, x1: 60, z1: 60, n: 12, altura: () => 0, paleta, falda: 600 }), ...aeropuerto({ x: 6, z: 0, rumbo: 0, largo: Number(q.get("largo") || 90), ancho: 4, paleta })];
   const avion = { pos: [0, 0.86, 0], rumbo: 0, cabeceo: num('cabeceo', 0), alabeo: num('alabeo', 0), alerones: num('alerones', 0), profundidad: num('profundidad', 0) };
   const gl = q.get('motor') === '2d' ? null : crearRenderGL(lienzo);
   const ctx = gl ? null : lienzo.getContext('2d');

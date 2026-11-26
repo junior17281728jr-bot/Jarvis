@@ -96,7 +96,7 @@ const NARANJA = [255, 140, 30], BLANCO = [255, 255, 255];
 
 export function construir(paleta) {
   const prims = campo({ x0: -22, z0: -22, x1: 22, z1: 22, n: 16, altura: sobreSuelo, paleta, semilla: 21, falda: 200, agua: (x, z) => Math.hypot(x + 14, z - 12) < 4.5 });
-  prims.push(...aeropuerto({ x: 0, z: 0, y: 0, rumbo: 0, largo: 5, ancho: 0.2, paleta }));
+  prims.push(...aeropuerto({ x: 0, z: 0, y: 0, rumbo: 0, largo: 5, ancho: 0.2, paleta, lucesPista: true }));
   // La manga, junto al umbral de la 36 (el viento viene del norte: estira hacia el sur).
   const mx = 0.9, mz = -1.6;
   prims.push(linea([[mx, 0, mz], [mx, 0.06, mz]], [210, 210, 210], { w: 1.2 }));

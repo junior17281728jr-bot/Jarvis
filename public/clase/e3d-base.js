@@ -43,9 +43,26 @@ export const COLOR_CLASE = Object.freeze({
   A: [160, 172, 192], B: [52, 120, 246], C: [214, 51, 196], D: [40, 168, 240], E: [176, 96, 214], G: [70, 178, 98],
 });
 
-// Un aeropuerto en el suelo: el pasto, la pista con sus marcas (umbral, eje, bordes), la calle de rodaje, la plataforma,
-// el hangar y la torre. Unidades del mundo; «m» es cuánto mide un pie en la escena (para el ancho y las marcas).
-export function aeropuerto({ x, z, y = 0, rumbo = 0, largo, ancho, paleta, torre = true, detalle = true }) {
+// 0.14.115: los números de la pista (AIM 2-3-3: el rumbo magnético redondeado a la decena, sin el último cero, visto
+// desde la llegada), en bloques de 3×5 como se pintan en el asfalto. → el número de cada cabecera.
+const DIGITOS = ['111101101101111', '010110010010010', '111001111100111', '111001111001111', '101101111001001', '111100111001111', '111100111101111', '111001001001001', '111101111101111', '111101111001111'];
+export const numeroPista = rumbo => { const n = Math.round((((rumbo % 360) + 360) % 360) / 10) % 36; return String(n === 0 ? 36 : n).padStart(2, '0'); };
+// Los rectángulos de un número (en «píxeles» del dibujo: columnas de izquierda a derecha, filas de arriba abajo).
+export function bloquesNumero(texto) {
+  const out = [];
+  [...texto].forEach((d, k) => {
+    const g = DIGITOS[Number(d)] ?? DIGITOS[0];
+    for (let fila = 0; fila < 5; fila++) {
+      let c = 0;
+      while (c < 3) { if (g[fila * 3 + c] !== '1') { c++; continue; } let fin = c; while (fin < 3 && g[fila * 3 + fin] === '1') fin++; out.push({ c0: k * 4 + c, c1: k * 4 + fin, f0: fila, f1: fila + 1 }); c = fin; }
+    }
+  });
+  return { bloques: out, columnas: texto.length * 4 - 1 };
+}
+// Un aeropuerto en el suelo: el pasto, la pista con sus marcas (umbral, número, eje, punto de mira, bordes), la calle de
+// rodaje, la plataforma, el hangar y la torre. Unidades del mundo. lucesPista: con la paleta oscura (atardecer), las luces
+// blancas de los bordes (AIM 2-1-4) — las escenas; el juego pone las suyas.
+export function aeropuerto({ x, z, y = 0, rumbo = 0, largo, ancho, paleta, torre = true, detalle = true, lucesPista = false }) {
   const out = [];
   const h = (rumbo * Math.PI) / 180, F = [Math.sin(h), Math.cos(h)], R = [Math.cos(h), -Math.sin(h)];
   const P = (a, b, alto = y) => [x + F[0] * a + R[0] * b, alto, z + F[1] * a + R[1] * b];
@@ -62,12 +79,27 @@ export function aeropuerto({ x, z, y = 0, rumbo = 0, largo, ancho, paleta, torre
       out.push(rect(s > 0 ? L * 0.62 : -L * 0.7, s > 0 ? L * 0.7 : -L * 0.62, W * 0.25, W * 0.5, paleta.marca, y + e * 2));
     }
     for (let a = -L * 0.82; a < L * 0.8; a += largo * 0.06) out.push(rect(a, a + largo * 0.03, -W * 0.04, W * 0.04, paleta.marca, y + e * 2));
+    // El número de cada cabecera, después de las rayas del umbral, derecho para quien llega.
+    for (const s of [-1, 1]) {
+      const { bloques, columnas } = bloquesNumero(numeroPista(s < 0 ? rumbo : rumbo + 180));
+      const alto = Math.min(W * 1.1, largo * 0.026), pf = alto / 5, pc = Math.min(pf * 0.8, (W * 1.5) / columnas);
+      const base = L - largo * 0.058; // desde el borde de la pista hacia adentro
+      for (const q of bloques) {
+        const a0 = base - (alto - q.f0 * pf), a1 = base - (alto - q.f1 * pf), b0 = -columnas * pc / 2 + q.c0 * pc, b1 = -columnas * pc / 2 + q.c1 * pc;
+        // s = −1: se llega desde −L (el arriba del número mira hacia +a); s = 1, todo dado vuelta.
+        out.push(s < 0 ? rect(-a1, -a0, b0, b1, paleta.marca, y + e * 2) : rect(a0, a1, -b1, -b0, paleta.marca, y + e * 2));
+      }
+    }
     out.push(linea([P(-L, -W * 0.94, y + e * 2), P(L, -W * 0.94, y + e * 2)], paleta.marca, { a: 0.8, w: 1, capa: 'calco' }));
     out.push(linea([P(-L, W * 0.94, y + e * 2), P(L, W * 0.94, y + e * 2)], paleta.marca, { a: 0.8, w: 1, capa: 'calco' }));
     // Calle de rodaje paralela y plataforma.
     out.push(rect(-L * 0.9, L * 0.9, W * 3.4, W * 4.2, paleta.asfalto, y + e));
     out.push(rect(-L * 0.25, L * 0.15, W * 4.2, W * 9, paleta.asfalto, y + e));
     for (const a of [-L * 0.85, 0, L * 0.85]) out.push(rect(a - W * 0.4, a + W * 0.4, W, W * 3.4, paleta.asfalto, y + e));
+    if (lucesPista && paleta.oscuro) {
+      const n = Math.max(6, Math.round(largo / (W * 6)));
+      for (let k = 0; k <= n; k++) for (const b of [-W * 1.08, W * 1.08]) out.push(bola(P(-L + (largo * k) / n, b, y + e * 3), W * 0.09, [255, 244, 214], { tex: 'brillo', min: 1.4, a: 0.9 }));
+    }
   }
   if (torre) {
     // Hangares y la torre (cajas; en el mundo, no en el suelo).
@@ -81,6 +113,8 @@ export function aeropuerto({ x, z, y = 0, rumbo = 0, largo, ancho, paleta, torre
   return out;
 }
 
+// 0.14.115: el agua refleja el cielo (con WebGL: más de costado, como un lago de verdad) y brilla con el sol.
+const AGUA = Object.freeze({ refleja: 0.6, brillo: 0.8 });
 // El campo: parcelas de colores (pasto, cultivo, tierra), sin texturas, con una grilla suave que da la escala.
 export function campo({ x0, z0, x1, z1, n, altura, paleta, semilla = 3, agua = null, falda = 0, liso = false }) {
   const color = (x, z) => {
@@ -99,7 +133,8 @@ export function campo({ x0, z0, x1, z1, n, altura, paleta, semilla = 3, agua = n
       const na = Math.max(1, Math.round((a1 - a0) / paso)), nb = Math.max(1, Math.round((b1 - b0) / paso));
       for (let i = 0; i < na; i++) for (let j = 0; j < nb; j++) {
         const A0 = a0 + ((a1 - a0) * i) / na, A1 = a0 + ((a1 - a0) * (i + 1)) / na, B0 = b0 + ((b1 - b0) * j) / nb, B1 = b0 + ((b1 - b0) * (j + 1)) / nb;
-        afuera.push(poligono([[A0, 0, B0], [A0, 0, B1], [A1, 0, B1], [A1, 0, B0]], color((A0 + A1) / 2, (B0 + B1) / 2), { luz: 1, capa: 'suelo', terreno: !(agua && agua((A0 + A1) / 2, (B0 + B1) / 2)) }));
+        const esAgua = Boolean(agua && agua((A0 + A1) / 2, (B0 + B1) / 2));
+        afuera.push(poligono([[A0, 0, B0], [A0, 0, B1], [A1, 0, B1], [A1, 0, B0]], color((A0 + A1) / 2, (B0 + B1) / 2), { luz: 1, capa: 'suelo', terreno: !esAgua, ...(esAgua ? AGUA : {}) }));
       }
     }
   }
@@ -116,7 +151,7 @@ export function campo({ x0, z0, x1, z1, n, altura, paleta, semilla = 3, agua = n
       if (k2 > 0.72) return mezclarColor(base, paleta.tierra, 0.4);
       return k < 0.22 ? mezclarColor(base, paleta.bosque, 0.45) : base;
     },
-  }).map(p => ({ ...p, capa: 'suelo', terreno: p.c !== paleta.agua })));
+  }).map(p => ({ ...p, capa: 'suelo', terreno: p.c !== paleta.agua, ...(p.c === paleta.agua ? AGUA : {}) })));
 }
 
 // Un cúmulo con la base plana a la altura «base»: bolas abajo en fila y más chicas hacia arriba. → { prims, caja }
