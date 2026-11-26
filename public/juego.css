@@ -452,3 +452,180 @@ body.juego-activo { overflow: hidden; }
   .juego-capa-pregunta, .juego-pregunta, .juego-explicacion, .juego-oferta, .juego-aviso, .juego-resultado, .juego-q-opciones > .juego-opcion-respuesta,
   .juego-explicacion .op-rev, .juego-repe-llamada { animation: none !important; }
 }
+
+/* ---------- 0.14.118: botones «de verdad», paneles en los bordes, la hoja del Menú y sin zoom ---------- */
+/* (pedido del dueño: «mejora estos botones… porque no funcionan bien o a veces no abren», «la cabina más real» y la página
+   que se agrandaba sola). Nada flota en el centro: arriba, una fila de botones y otra con el consejo y la información (sobre
+   el techo de la cabina); los mandos en paneles firmes a los costados (de lado) o abajo (de pie). */
+.juego-vuelo, .juego-vuelo * { -webkit-tap-highlight-color: transparent; }
+.juego-vuelo, .juego-escenario, .juego-lienzo, .juego-capa, .juego-mandos, .juego-barra, .juego-fila2 { touch-action: none; }
+.juego-vuelo button, .juego-vuelo a, .juego-vuelo [role="slider"] { touch-action: manipulation; }
+.juego-vuelo :is(.juego-se-desplaza, .juego-runup, .juego-motor, .juego-clase-cuerpo, .juego-aviso, .juego-capa-dialogo, .juego-dialogo, .juego-pregunta, .juego-explicacion) { touch-action: pan-y; }
+.juego-vuelo :is(input, select, textarea) { font-size: 16px; }
+/* El botón: gris oscuro con relieve (el borde de arriba claro, sombra adentro y abajo); al apretarlo se hunde. */
+.juego-vuelo .juego-boton { margin: 0; min-width: 44px; min-height: 44px; border-radius: 10px; border: 1px solid #08090b; border-top-color: #646b77;
+  background: linear-gradient(#41464f, #2a2e35 55%, #23262c); color: #fff; font: 800 13px/1.1 system-ui, -apple-system, sans-serif; letter-spacing: 0.04em; text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -2px 0 rgba(0,0,0,0.35), 0 2px 0 #050607, 0 4px 8px rgba(0,0,0,0.45); text-shadow: 0 1px 0 rgba(0,0,0,0.6);
+  -webkit-user-select: none; user-select: none; transition: transform 60ms, box-shadow 60ms; }
+.juego-vuelo .juego-boton:active { transform: translateY(2px); background: linear-gradient(#25282e, #2c3037); box-shadow: inset 0 2px 5px rgba(0,0,0,0.65), 0 0 0 #000; }
+.juego-vuelo .juego-boton[aria-pressed="true"] { background: linear-gradient(#4a505a, #343840 55%, #2c3037); border-color: #08090b; border-top-color: #7b8391; }
+.juego-vuelo .juego-boton:focus-visible { outline: 3px solid #ffb020; outline-offset: 2px; }
+/* La lucecita de los que se prenden: verde (con brillo) en ON, oscura en OFF. */
+.juego-vuelo .juego-luz { gap: 7px; }
+.juego-vuelo .juego-luz::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%; background: #15171a; box-shadow: inset 0 1px 2px rgba(0,0,0,0.8), 0 0 0 1px #000; }
+.juego-vuelo .juego-luz[aria-pressed="true"]::before { background: radial-gradient(circle at 40% 35%, #c9ffd5, #36e26a 55%, #129a3a); box-shadow: 0 0 6px 1px rgba(54,226,106,0.8), 0 0 0 1px #0a3b18; }
+.juego-vuelo .juego-salir { padding: 6px; }
+.juego-barra .juego-boton { min-height: 44px; min-width: 44px; padding: 6px 11px; font-size: 12.5px; }
+.juego-camara { min-width: 96px !important; }
+.juego-vuelo[data-tactil="1"] .juego-barra :is(.juego-flaps, .juego-asistente, .juego-ayuda-boton) { display: none; }
+.juego-vuelo[data-tactil="1"] .juego-barra .juego-vista { display: inline-flex; }
+.juego-marcador { background: linear-gradient(#22252b, #15171b); border: 1px solid #000; border-top-color: #4b515c; }
+
+/* La segunda fila: el consejo (corto, dos líneas a lo sumo) y el panel de información. Sobre el techo de la cabina. */
+.juego-barra-izq { align-items: flex-start; }
+.juego-fila2 { position: absolute; z-index: 1; left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); top: calc(max(8px, env(safe-area-inset-top)) + 54px);
+  display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; pointer-events: none; }
+.juego-fila2 > * { pointer-events: auto; }
+.juego-fila2-izq { flex: 1 1 auto; min-width: 0; max-width: 560px; }
+.juego-escenario .juego-fila2 .juego-chip, .juego-escenario .juego-fila2 .juego-subtitulo { position: static; max-width: none; margin: 0; font-size: 13.5px; line-height: 1.3; padding: 6px 10px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-height: calc(2.6em + 8px); box-sizing: border-box; padding-bottom: 0; border-bottom: 6px solid transparent; background: linear-gradient(#1d2026, #121418); border: 1px solid #000; border-left: 4px solid #2fbf5b; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+.juego-escenario .juego-fila2 .juego-subtitulo { border-left-color: #7fd0ff; }
+.juego-escenario .juego-fila2 .juego-chip[data-tono="mal"] { border-left-color: #e5483e; background: linear-gradient(#5a1612, #3a0e0b); }
+.juego-escenario .juego-fila2 .juego-subtitulo[hidden], .juego-escenario .juego-fila2 .juego-chip:empty { display: none; }
+.juego-info { flex: none; display: grid; gap: 3px; padding: 5px 9px; border-radius: 10px; background: linear-gradient(#1d2026, #121418); border: 1px solid #000; border-top-color: #4b515c;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4); color: #e9eef6; font: 750 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.juego-info-fila { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.juego-info-comb { display: inline-flex; gap: 5px; align-items: center; }
+.juego-info-barra { position: relative; width: 34px; height: 8px; border-radius: 3px; background: #0a0b0d; box-shadow: inset 0 1px 2px #000; overflow: hidden; }
+.juego-info-lleno { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--k, 1) * 100%); background: linear-gradient(#5fe08a, #23a14a); }
+.juego-info-comb[data-bajo="1"] .juego-info-lleno { background: linear-gradient(#ffb36b, #e5483e); }
+.juego-info .juego-destino { padding: 0; background: none; font: 700 11.5px/1.2 system-ui, -apple-system, sans-serif; color: #b8c3d4; }
+/* El mini-mapa, debajo del panel de información (en el teléfono se abre con «Mapa»). */
+.juego-escenario .juego-mapas { top: calc(max(8px, env(safe-area-inset-top)) + 112px); }
+.juego-vuelo[data-mapa="0"] .juego-mapas { display: none; }
+.juego-mapas .juego-mapa-zoom { min-width: 44px !important; min-height: 44px !important; }
+.juego-mapas .clase-sit-mapa { border: 2px solid #000; box-shadow: 0 0 0 1px #4b515c, 0 4px 10px rgba(0,0,0,0.5); }
+/* Los datos del vuelo (vista de afuera): un panel chico abajo a la izquierda. */
+.juego-escenario .juego-hud { left: max(8px, env(safe-area-inset-left)); bottom: 10px; transform: none; display: grid; grid-template-columns: repeat(2, auto); gap: 2px 12px; padding: 6px 10px;
+  background: linear-gradient(rgba(29,32,38,0.92), rgba(18,20,24,0.92)); border: 1px solid #000; border-top-color: #4b515c; font: 750 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* «Componentes ⇧»: la pestaña abajo al centro; el cajón sube desde abajo (los interruptores con su luz). */
+.juego-escenario > .juego-componentes { position: absolute; z-index: 3; left: 50%; bottom: max(6px, env(safe-area-inset-bottom)); transform: translateX(-50%); min-height: 40px; padding: 4px 14px;
+  border-radius: 12px 12px 8px 8px; font-size: 12px; }
+.juego-escenario > .juego-componentes:active { transform: translateX(-50%) translateY(2px); }
+/* (en el teléfono, abajo a la derecha: en el centro tapaba el yugo dibujado) */
+.juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes { left: auto; right: max(6px, env(safe-area-inset-right)); transform: none; padding: 4px 10px; font-size: 11px; }
+.juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes:active { transform: translateY(2px); }
+.juego-panel-der > .juego-info { justify-self: stretch; min-width: 0; padding: 4px 7px; }
+.juego-panel-der > .juego-info .juego-info-fila { gap: 6px; font-size: 11px; flex-wrap: wrap; }
+.juego-panel-der > .juego-info .juego-destino { white-space: normal; font-size: 11px; }
+.juego-componentes .juego-flecha { font-size: 15px; transition: transform 150ms; }
+.juego-componentes[aria-expanded="true"] .juego-flecha { transform: rotate(180deg); }
+.juego-vuelo[data-tactil="1"] .juego-componentes .juego-motor-boton-texto { display: inline; }
+.juego-escenario .juego-motor { top: auto; bottom: calc(max(6px, env(safe-area-inset-bottom)) + 48px); max-height: calc(100% - 120px); overflow: auto; background: linear-gradient(#1f2228, #15171b);
+  border: 1px solid #000; border-top-color: #4b515c; }
+.juego-vuelo[data-cajon="1"] .juego-chip { display: -webkit-box; }
+.juego-vuelo .juego-chip-motor { min-height: 36px; border-radius: 8px; border: 1px solid #08090b; border-top-color: #646b77; background: linear-gradient(#41464f, #2a2e35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 2px 0 #050607; gap: 6px; }
+.juego-vuelo .juego-chip-motor:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); }
+.juego-vuelo .juego-chip-motor[aria-pressed]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #15171a; box-shadow: inset 0 1px 2px #000, 0 0 0 1px #000; }
+.juego-vuelo .juego-chip-motor[aria-pressed="true"] { background: linear-gradient(#4a505a, #343840); border-color: #08090b; }
+.juego-vuelo .juego-chip-motor[aria-pressed="true"]::before { background: radial-gradient(circle at 40% 35%, #c9ffd5, #36e26a 55%, #129a3a); box-shadow: 0 0 6px rgba(54,226,106,0.8); }
+
+/* La hoja del Menú: opaca, sobre todo, se desplaza y se cierra (con «Cerrar», tocando afuera o con Esc). */
+.juego-hoja-capa { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); box-sizing: border-box; }
+.juego-hoja-capa[hidden] { display: none; }
+.juego-hoja-fondo { position: absolute; inset: 0; background: rgba(2,4,8,0.62); }
+.juego-hoja { position: relative; display: flex; flex-direction: column; width: min(560px, 100%); max-height: 100%; box-sizing: border-box; border-radius: 16px; overflow: hidden;
+  background: linear-gradient(#24272d, #17191d); color: #fff; border: 1px solid #000; box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 18px 40px rgba(0,0,0,0.6); }
+.juego-hoja-cabeza { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; border-bottom: 1px solid #000; box-shadow: 0 1px 0 rgba(255,255,255,0.06); }
+.juego-hoja-cabeza h2 { flex: 1; margin: 0; font: 800 16px/1.2 system-ui, -apple-system, sans-serif; letter-spacing: 0.03em; text-transform: uppercase; }
+.juego-hoja-cuerpo { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 8px 12px 14px; display: grid; gap: 6px; align-content: start; }
+.juego-hoja-fila { display: flex; flex-wrap: wrap; gap: 6px; }
+.juego-hoja-fila > .juego-boton { flex: 1 1 auto; }
+.juego-rosa > .juego-boton { flex: 1 1 calc(25% - 6px); }
+.juego-hoja .juego-menu-titulo { margin: 8px 0 0; }
+.juego-hoja-nota { margin: 0; color: #c9d3e3; font: 650 13px/1.3 system-ui, -apple-system, sans-serif; }
+.juego-vuelo .juego-ayuda2 { display: inline-flex !important; }
+
+/* Los paneles de los mandos (firmes, con tornillos en las puntas). */
+.juego-vuelo .juego-mandos { background: #090b0f; }
+.juego-panel { box-sizing: border-box; padding: 8px; border-radius: 14px; border: 1px solid #000;
+  background: radial-gradient(circle at 7px 7px, #6b717c 0 2px, transparent 2.5px), radial-gradient(circle at calc(100% - 7px) 7px, #6b717c 0 2px, transparent 2.5px),
+    radial-gradient(circle at 7px calc(100% - 7px), #6b717c 0 2px, transparent 2.5px), radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #6b717c 0 2px, transparent 2.5px),
+    linear-gradient(#1f2228, #14161a);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px #2a2e36; }
+.juego-panel-izq { display: grid; gap: 8px; align-content: center; }
+.juego-palancas { display: flex; gap: 8px; justify-content: center; align-items: flex-start; }
+.juego-frenos { display: flex; gap: 6px; }
+.juego-frenos > .juego-boton { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 11.5px; }
+.juego-freno { background: linear-gradient(#5a2622, #3a1512) !important; border-top-color: #a3564f !important; }
+.juego-freno[aria-pressed="true"] { transform: translateY(2px); box-shadow: inset 0 2px 5px rgba(0,0,0,0.65) !important; background: linear-gradient(#7a2a24, #4f1915) !important; }
+.juego-panel-der { display: grid; gap: 8px; align-content: center; }
+.juego-atajos { display: flex; gap: 6px; }
+.juego-atajos > .juego-boton { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 11.5px; }
+.juego-yugo-marco { display: flex; gap: 8px; align-items: center; justify-content: center; padding: 6px; border-radius: 12px; background: #0c0e11; box-shadow: inset 0 2px 6px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.06); }
+.juego-mando-nombre { color: #c9d1dd; font: 800 11px/1.2 system-ui, -apple-system, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+/* La palanca de potencia: la manija con estrías que corre en una ranura, la barra que se llena y el % abajo. */
+.juego-potencia-caja .juego-mando-nombre { margin-bottom: 14px; }
+.juego-potencia-pista { background: #050608; box-shadow: inset 0 2px 4px #000, 0 1px 0 rgba(255,255,255,0.08); }
+.juego-potencia-relleno { background: linear-gradient(#36e26a, #129a3a); opacity: 0.85; }
+.juego-potencia-manija { background: repeating-linear-gradient(#2a2d33 0 3px, #15171b 3px 5px); border: 2px solid #9aa2b1; border-top-color: #e8ecf2; box-shadow: 0 3px 6px rgba(0,0,0,0.6); }
+.juego-potencia-valor { font: 800 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e9eef6; }
+/* La palanca de los flaps: el riel con sus muescas (UP · 10° · 20° · 30°); la elegida se ve como la palanca puesta ahí. */
+.juego-flaps-caja { display: grid; justify-items: center; gap: 4px; }
+.juego-flaps-riel { display: grid; gap: 2px; padding: 3px; border-radius: 10px; background: #050608; box-shadow: inset 0 2px 4px #000; }
+.juego-vuelo .juego-muesca { min-width: 58px; min-height: 36px; padding: 2px 4px; border-radius: 7px; font-size: 12px; background: linear-gradient(#262a30, #1a1c21); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); color: #aab3c2; }
+.juego-vuelo .juego-muesca[aria-pressed="true"] { color: #111; background: linear-gradient(#ffffff, #cfd4db 60%, #aab1bb); border-top-color: #fff; text-shadow: none; box-shadow: 0 2px 0 #050607, 0 0 0 2px rgba(255,176,32,0.6); }
+/* La compensación: ▲ (nariz abajo), la rueda con su marca y ▼ (nariz arriba). */
+.juego-trim-caja { display: grid; justify-items: center; gap: 4px; }
+.juego-vuelo .juego-trim-b { min-width: 40px; min-height: 40px; padding: 0; font-size: 13px; }
+.juego-trim-escala { position: relative; width: 22px; height: 84px; border-radius: 6px; background: #050608; box-shadow: inset 0 2px 4px #000; overflow: hidden; }
+.juego-trim-rueda { position: absolute; inset: 3px 4px; border-radius: 4px; background: repeating-linear-gradient(#3b3e45 0 3px, #111214 3px 6px); }
+.juego-trim-marca { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: #ffb020; box-shadow: 0 0 4px rgba(255,176,32,0.8); }
+/* El yugo, más grande y en su marco. */
+.juego-yugo { background: radial-gradient(circle, #222a38 0 55%, #151b26 56%); border: 2px solid #4a566c; box-shadow: inset 0 2px 8px rgba(0,0,0,0.7); }
+
+/* El teléfono de pie: los dos paneles abajo, uno al lado del otro. */
+.juego-vuelo[data-tactil="1"] .juego-mandos { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); gap: 8px; align-items: stretch;
+  padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top: 1px solid #1d2636; }
+.juego-vuelo[data-tactil="1"] .juego-yugo { width: 124px; height: 124px; }
+/* El teléfono de lado: los paneles a los costados (dentro del área segura); el centro, para el avión y el horizonte. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-vuelo[data-tactil="1"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); }
+  .juego-vuelo[data-tactil="1"] .juego-mandos { display: contents; }
+  .juego-vuelo[data-tactil="1"] .juego-panel-izq { grid-column: 1; grid-row: 1; margin: max(6px, env(safe-area-inset-top)) 0 max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); width: 150px; }
+  .juego-vuelo[data-tactil="1"] .juego-escenario { grid-column: 2; grid-row: 1; }
+  .juego-vuelo[data-tactil="1"] .juego-panel-der { grid-column: 3; grid-row: 1; margin: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 0; width: 196px; }
+  .juego-vuelo[data-tactil="1"] .juego-muesca { min-height: 44px; }
+  .juego-vuelo[data-tactil="1"] .juego-yugo { width: 136px; height: 136px; }
+  .juego-vuelo[data-tactil="1"] .juego-yugo-marco { padding: 6px 4px; gap: 4px; }
+  .juego-vuelo[data-tactil="1"] .juego-palancas { gap: 6px; }
+  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-fila2 { top: calc(max(6px, env(safe-area-inset-top)) + 50px); }
+  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-mapas { top: calc(max(6px, env(safe-area-inset-top)) + 100px); }
+  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-mapas .clase-sit-mapa { height: 92px; }
+  .juego-vuelo[data-tactil="1"] .juego-fila2 { flex-wrap: wrap; }
+  .juego-vuelo[data-tactil="1"] .juego-fila2 .juego-chip { -webkit-line-clamp: 2; font-size: 12.5px; }
+  .juego-vuelo[data-tactil="1"] .juego-barra .juego-boton { padding: 4px 8px; font-size: 11.5px; }
+  .juego-vuelo[data-tactil="1"] .juego-camara { min-width: 84px !important; }
+  .juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { grid-column: 3; grid-row: 1; width: 196px; margin: 6px 6px 6px 0; }
+}
+@media (max-width: 360px) { .juego-vuelo[data-tactil="1"] .juego-yugo { width: 112px; height: 112px; } .juego-vuelo .juego-muesca { min-width: 50px; } }
+/* Con preguntas vuela el piloto automático: sin mandos (la cámara y la pausa quedan arriba). */
+.juego-vuelo[data-modo="preguntas"] .juego-mandos { display: none !important; }
+.juego-vuelo[data-modo="preguntas"] .juego-panel { display: none !important; }
+/* La práctica del motor: el panel de la derecha deja lugar a la lista. */
+.juego-vuelo[data-modo="motor"] :is(.juego-panel-der, .juego-flaps-caja) { display: none; }
+.juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { grid-column: 2; grid-row: 1; height: auto; max-height: 220px; }
+@media (prefers-reduced-motion: reduce) {
+  .juego-vuelo .juego-boton, .juego-componentes .juego-flecha { transition: none; }
+}
+/* (de lado, la lista de la prueba de motor va en la columna de la derecha; el cajón deja pasar sus mandos a otra fila) */
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { grid-column: 3; grid-row: 1; width: 210px; height: auto; max-height: none; margin: 6px 6px 6px 0; overflow: auto; }
+}
+.juego-escenario .juego-motor .juego-motor-mandos { flex-wrap: wrap; }
+/* El aviso corto (el tráfico, el altímetro): una línea con «Cerrar» al lado, arriba sobre el techo; se va solo. */
+.juego-aviso.juego-aviso-corto { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 12px; max-width: min(460px, calc(100% - 16px)); margin: 0; }
+.juego-aviso.juego-aviso-corto .juego-aviso-titulo { flex: 1; min-width: 0; font-size: 14px; }
+.juego-aviso.juego-aviso-corto .juego-aviso-botones { margin: 0; flex: none; }
+.juego-aviso.juego-aviso-corto .juego-boton { min-height: 40px; padding: 4px 10px; font-size: 12px; }

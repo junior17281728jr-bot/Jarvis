@@ -5,7 +5,9 @@
 import { bola, linea, aleatorio, mezclarColor } from './motor3d.js';
 import { nubeTormenta } from './e3d-efectos.js';
 
-export const TIEMPOS = Object.freeze(['despejado', 'nubes', 'frio', 'calido']);
+// 0.14.118 (pedido del dueño: «poder controlar el clima»): también Lluvia (chubascos bajo una capa baja) y Niebla (de
+// radiación: el aire calmo y húmedo de la mañana, abajo casi no se ve). Ver juego.tiempo.<id>.texto.
+export const TIEMPOS = Object.freeze(['despejado', 'nubes', 'lluvia', 'niebla', 'frio', 'calido']);
 export const TIEMPO_FAA = Object.freeze({
   frio: Object.freeze({
     antes: 'nubes cumuliformes en torre y cumulonimbos; la presión baja', paso: 'lluvia fuerte con rayos, ráfagas y turbulencia; visibilidad mala; la temperatura baja de golpe; la presión toca fondo',
@@ -17,6 +19,10 @@ export const TIEMPO_FAA = Object.freeze({
   }),
   // Sin entrenamiento de instrumentos, se pierde el control en unos 10 minutos; lo único importante: las alas niveladas.
   nubes: Object.freeze({ pierdeControlMin: 10, viraje180Min: 1, tasaEstandar: 3, fuente: 'AFH cap. 18' }),
+  // La niebla de radiación: noches despejadas, poco o nada de viento y la temperatura cerca del punto de rocío (PHAK cap. 12).
+  niebla: Object.freeze({ tipo: 'radiacion', vientoMaxKt: 5, fuente: 'PHAK cap. 12' }),
+  // La lluvia: chubascos que bajan la visibilidad y el techo, con ráfagas (PHAK cap. 12).
+  lluvia: Object.freeze({ fuente: 'PHAK cap. 12' }),
 });
 
 // Dónde está cada cosa (unidades de 1,000 ft; norte = +z).
@@ -24,6 +30,8 @@ export const GEOMETRIA = Object.freeze({
   nubes: Object.freeze({ base: 3000, tope: 4500 }),
   frio: Object.freeze({ lineaZ: 16, ancho: 3 }), // la línea de tormentas (este-oeste) al norte de A
   calido: Object.freeze({ lineaZ: -18, base: 900, tope: 5000, alcanceZ: 60 }), // el frente en superficie al sur; el estrato al norte
+  lluvia: Object.freeze({ base: 2500, tope: 6000 }),
+  niebla: Object.freeze({ tope: 500 }), // la capa de niebla, pegada al suelo
 });
 const lim = (x, a, b) => Math.min(b, Math.max(a, x));
 const r2 = x => Math.round(x * 100) / 100;
@@ -35,6 +43,15 @@ export function condiciones(tiempo, x, z, ft) {
   if (tiempo === 'nubes') {
     const g = GEOMETRIA.nubes, dentro = ft >= g.base && ft <= g.tope;
     return { ...base, dentro, techo: g.base, visibilidad: dentro ? 0.35 : ft < g.base ? 40 : 70, gris: ft < g.base ? 0.45 : 0, viento: { desde: 270, kt: 8, rafagas: 0 }, temperatura: 15 };
+  }
+  if (tiempo === 'lluvia') {
+    const g = GEOMETRIA.lluvia, dentro = ft >= g.base && ft <= g.tope;
+    return { ...base, dentro, techo: g.base, visibilidad: dentro ? 0.35 : ft < g.base ? 16 : 50, gris: ft < g.base ? 0.6 : 0.1, lluvia: ft < g.base ? 0.75 : 0, turbulencia: dentro ? 0.35 : 0.15,
+      viento: { desde: 200, kt: 10, rafagas: 18 }, temperatura: 14, altimetro: 29.8 };
+  }
+  if (tiempo === 'niebla') {
+    const g = GEOMETRIA.niebla, k = lim((ft - g.tope * 0.4) / (g.tope * 0.8), 0, 1); // 0 en el suelo … 1 arriba de la capa
+    return { ...base, visibilidad: 2.5 + k * 40, gris: 0.6 * (1 - k) + 0.15, viento: { desde: 360, kt: 2, rafagas: 0 }, temperatura: 9, altimetro: 30.1 };
   }
   if (tiempo === 'frio') {
     const g = GEOMETRIA.frio, d = z - g.lineaZ;
@@ -78,6 +95,14 @@ export function nubesDe(tiempo) {
       const x = i * 5.5 + (azar() - 0.5) * 2, z = j * 5.5 + (azar() - 0.5) * 2;
       puff([x, y0 + 0.5, z], 2.6 + azar() * 0.8, 0.35); puff([x + 1.5, y1 - 0.5, z + 1], 2.2 + azar() * 0.6, 0.1);
     }
+  } else if (tiempo === 'lluvia') {
+    // Una capa baja y gris (base 2,500 ft) con cortinas de lluvia aquí y allá.
+    const g = GEOMETRIA.lluvia, y0 = g.base / 1000;
+    for (let i = -6; i <= 6; i++) for (let j = -6; j <= 8; j++) {
+      const x = i * 5 + (azar() - 0.5) * 2, z = j * 5 + (azar() - 0.5) * 2;
+      puff([x, y0 + 0.6, z], 3 + azar() * 0.7, 0.65, 0.97);
+      if ((i + j) % 3 === 0) out.push(linea([[x, y0, z], [x + 0.25, 0, z - 0.3]], [140, 150, 170], { a: 0.28, w: 2 }));
+    }
   } else if (tiempo === 'frio') {
     const g = GEOMETRIA.frio;
     for (let x = -34; x <= 46; x += 7) out.push(...nubeTormenta({ x: x + (azar() - 0.5) * 2, z: g.lineaZ + (azar() - 0.5) * 2, base: 2.2, ancho: 4.2, altoMax: 26, k: 0.95, semilla: 50 + x, gris: 0.15 }));
@@ -89,6 +114,35 @@ export function nubesDe(tiempo) {
       const x = i * 5 + (azar() - 0.5) * 2, z = g.lineaZ + 1 + j * 4.2 + (azar() - 0.5) * 2;
       puff([x, y0 + 0.4, z], 3 + azar() * 0.6, 0.55, 0.97);
     }
+  }
+  return out;
+}
+
+// 0.14.118: la turbulencia de cada momento (0..1), más real: casi nada con buen tiempo (un poco de térmicas de día, bajo
+// las nubes de buen tiempo), más con viento fuerte cerca del suelo (turbulencia mecánica), dentro de las nubes y en las
+// tormentas (lo de condiciones()). hora: 'dia' | 'atardecer' | 'noche'; viento: el que sopla.
+export function nivelTurbulencia(cond, { ft = 0, enSuelo = false, hora = 'dia', viento = null } = {}) {
+  if (enSuelo) return 0;
+  let n = cond?.turbulencia ?? 0;
+  if (hora === 'dia' && ft > 80 && ft < 4500) n += 0.05 * Math.min(1, ft / 600); // las térmicas
+  const kt = viento?.kt ?? cond?.viento?.kt ?? 0, rafagas = viento?.rafagas ?? cond?.viento?.rafagas ?? 0;
+  if (ft < 1500) n += Math.max(0, kt - 10) * 0.012 * (1 - ft / 1500) + Math.max(0, rafagas - kt) * 0.01;
+  if (cond?.dentro) n += 0.2;
+  return lim(n, 0, 1.6);
+}
+
+// 0.14.118: la manga de viento junto a la pista: el mástil y la manga (rayas naranja y blanca) que apunta hacia donde va
+// el viento y se infla con la fuerza (llena con 15 kt o más; colgando sin viento). Se mueve un poco (flamea).
+export const MANGA = Object.freeze({ x: -0.075, z: -1.55, altoFt: 18, largoFt: 12, llenaKt: 15 });
+export function mangaDeViento(viento, t = 0) {
+  const m = MANGA, kt = Math.max(0, viento?.kt ?? 0), k = lim(kt / m.llenaKt, 0, 1);
+  const va = ((viento?.desde ?? 0) + 180 + Math.sin(t * 1.7) * 6 * k) * Math.PI / 180; // hacia donde sopla
+  const y0 = m.altoFt / 1000, L = m.largoFt / 1000;
+  const out = [linea([[m.x, 0, m.z], [m.x, y0, m.z]], [205, 208, 214], { a: 1, w: 1.5 })];
+  for (let i = 1; i <= 5; i++) {
+    const f = i / 5, h = f * L;
+    const p = [m.x + Math.sin(va) * h * (0.25 + 0.75 * k), y0 - h * (1 - k) * 0.9, m.z + Math.cos(va) * h * (0.25 + 0.75 * k)];
+    out.push(bola(p, (0.0011 - f * 0.0004) * (0.6 + 0.4 * k), i % 2 ? [242, 110, 30] : [245, 245, 245], { min: 1.2 }));
   }
   return out;
 }

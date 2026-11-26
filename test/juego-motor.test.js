@@ -196,7 +196,7 @@ test('el sonido: no se crea nada hasta encender() (un toque del usuario); despu�
 });
 
 test('el tiempo: la tabla del PHAK cap. 12 (frentes) y del AFH (nubes); qué hay en cada lugar', () => {
-  assert.deepEqual([...TIEMPOS], ['despejado', 'nubes', 'frio', 'calido']);
+  assert.deepEqual([...TIEMPOS], ['despejado', 'nubes', 'lluvia', 'niebla', 'frio', 'calido']); // (0.14.118: también lluvia y niebla)
   assert.equal(TIEMPO_FAA.frio.fuente, 'PHAK cap. 12'); assert.equal(TIEMPO_FAA.calido.fuente, 'PHAK cap. 12');
   assert.deepEqual({ ...TIEMPO_FAA.nubes }, { pierdeControlMin: 10, viraje180Min: 1, tasaEstandar: 3, fuente: 'AFH cap. 18' });
   if (phak12) {

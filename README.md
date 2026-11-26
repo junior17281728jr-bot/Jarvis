@@ -716,6 +716,32 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.118: la cabina por dentro, los botones «de verdad», el tiempo a mano y sin zoom — sin cambio de base
+
+- **La cabina** (`clase/cabina.js`, dibujada a mano: sin modelos ni imágenes de afuera, sin marcas): la de un entrenador de ala
+  alta de cuatro plazas. El techo tapizado con los parasoles, el marco del parabrisas, la brújula colgada arriba (su tarjeta
+  corre con el rumbo), el termómetro exterior; en la PC las ventanas de los costados con el montante y el ala vista desde
+  abajo, el VOR, las radios (COM/NAV, transpondedor 1200), el lado del copiloto y su yugo. Cada reloj en su caja con
+  tornillos y vidrio; abajo el MASTER, la llave de los magnetos y las luces (en su posición real), el calor al carburador, la
+  palanca de potencia (entra con más potencia), la mezcla roja, los flaps (palanca + indicador UP · 10 · 20 · 30) y la rueda de
+  compensación. Los yugos giran con el alabeo y se acercan al tirar. Luz de día (sombra de la visera), atardecer y noche (luz
+  roja y las lucecitas de los relojes). Lo fijo se dibuja una vez en lienzos aparte (`crearLienzo`): cada cuadro, solo lo que
+  se mueve. `geometriaCabina()` la usan el dibujo, la cámara y las marcas del tráfico.
+- **Los botones** (`clase/juego-tactil.js`): responden al primer toque también con otro dedo en el yugo (en iOS el navegador
+  no mandaba el «click»: se aprietan al levantar el dedo y el click repetido se descarta); sólidos, con relieve, se hunden al
+  apretarlos y los que se prenden tienen su lucecita verde. **Sin zoom** mientras se vuela: el viewport con
+  `maximum-scale=1, user-scalable=no` (al salir, como estaba), sin pellizco ni doble toque.
+- **La pantalla**: arriba la cámara («Cabina 1/2»), la pausa y «Menú»; debajo el consejo (dos líneas) y la información (tiempo,
+  millas, combustible y el aeropuerto), sobre el techo de la cabina: nada tapa el parabrisas. En el teléfono los mandos van en
+  paneles a los costados (de lado) o abajo (de pie): potencia, flaps por muescas, FRENO (mantener) y freno de mano; atajos
+  (Asistente, Mapa), el yugo en su marco y la compensación (▲▼). «Componentes ⇧» abre el cajón de los interruptores.
+- **El Menú**: una hoja opaca que se desplaza y se cierra (Cerrar, tocar afuera, Esc): la hora, el tráfico, el sonido, el
+  tiempo (nuevos: **Lluvia** y **Niebla**, PHAK cap. 12) y el **viento a mano** (8 rumbos, 0–25 kt, ráfagas). La manga de
+  viento junto a la cabecera.
+- **El vuelo**: flaps de 0 a 30° (`m.flaps` 0 · 0.5 · 1 · 1.5), frenos (`m.freno`), una turbulencia suave según el tiempo, el
+  viento y la hora (`nivelTurbulencia`), el traqueteo de las ruedas en la carrera.
+- Pruebas: `test/juego-cabina.test.js`.
+
 ### Lo nuevo de la 0.14.117: el Juego de vuelo, más real (avión, mandos, cámara y preguntas) — sin cambio de base
 
 - **El vuelo** (`vuelo-modelo.js`): el efecto suelo (`EFECTO_SUELO`, `efectoSuelo(ft)`; PHAK cap. 5: la resistencia

@@ -75,16 +75,21 @@ export const ALA_CAE = 30;
 export const VELETA = 0.12;
 
 // Coeficiente de sustentación relativo (1 = el máximo) para un ángulo de ataque; pasada la pérdida, cae.
+// (0.14.118: flaps de 0 a 1.5: 10° = 0.5, 20° = 1 (como antes), 30° = 1.5; el máximo sube hasta los 20° y después casi
+// no sube más: los últimos 10° dan sobre todo resistencia, como en el avión de verdad)
+const cmaxFlaps = flaps => 1 + ((VUELO.perdidaKt / VUELO.perdidaFlapsKt) ** 2 - 1) * (Math.min(1, flaps) + Math.max(0, flaps - 1) * 0.2);
 export function sustentacion(alfa, flaps = 0) {
-  const a0 = 2 + flaps * 3; // con flaps hay sustentación con menos ángulo
-  const cmax = flaps ? (VUELO.perdidaKt / VUELO.perdidaFlapsKt) ** 2 : 1;
+  flaps = Number(flaps) || 0;
+  const a0 = 2 + Math.min(1, flaps) * 3 + Math.max(0, flaps - 1) * 1; // con flaps hay sustentación con menos ángulo
+  const cmax = flaps ? cmaxFlaps(flaps) : 1;
   if (alfa <= VUELO.alfaPerdida) return lim(((alfa + a0) / (VUELO.alfaPerdida + a0)) * cmax, -0.4, cmax);
   return cmax * lim(1 - (alfa - VUELO.alfaPerdida) * 0.06, 0.55, 1);
 }
 
 // El ángulo de ataque que sostiene el vuelo nivelado a una velocidad (para la compensación).
 export function alfaNivel(kt, flaps = 0) {
-  const a0 = 2 + flaps * 3, cmax = flaps ? (VUELO.perdidaKt / VUELO.perdidaFlapsKt) ** 2 : 1;
+  flaps = Number(flaps) || 0;
+  const a0 = 2 + Math.min(1, flaps) * 3 + Math.max(0, flaps - 1) * 1, cmax = flaps ? cmaxFlaps(flaps) : 1;
   const cl = Math.min(cmax * 0.95, (VUELO.perdidaKt / Math.max(kt, VUELO.perdidaKt)) ** 2);
   return (cl / cmax) * (VUELO.alfaPerdida + a0) - a0;
 }
@@ -117,7 +122,8 @@ export function pasoVuelo(avion, mandos = {}, dt = 1 / 60, { ambiente = {}, asis
 function subpaso(a, m, dt, amb, asistente) {
   const n = { ...a, t: a.t + dt, toque: null };
   if (n.choque) return n;
-  const flaps = m.flaps ? 1 : 0;
+  // (0.14.118: flaps 0 · 0.5 · 1 · 1.5 = UP · 10° · 20° · 30°; true = 20°, como antes)
+  const flaps = m.flaps === true ? 1 : lim(Number(m.flaps) || 0, 0, 1.5);
   n.flaps = flaps;
   n.potencia = lim(m.potencia ?? a.potencia, 0, 1);
   // ---- el motor ----
@@ -243,6 +249,9 @@ function subpaso(a, m, dt, amb, asistente) {
     // frena más.
     if (n.agua) n.kt = Math.max(0, n.kt - (AMARIZAJE.frenoKtS + AMARIZAJE.frenoPorKt * n.kt) * dt);
     else if (!enPista(n.x, n.z, pistaDe(n.x, n.z)).dentro) n.kt = Math.max(0, n.kt - 3 * dt);
+    // 0.14.118: los frenos (0..1: el pedal o el freno de mano): hasta ~10 kt por segundo (más que el empuje a fondo: con
+    // el freno de mano puesto el avión no se mueve).
+    if (!n.agua && (m.freno ?? 0) > 0) n.kt = Math.max(0, n.kt - lim(m.freno, 0, 1) * 10 * dt);
   } else n.agua = false;
   // Los flaps bajan y suben despacio (para el indicador: unos 4 s).
   n.flapsPos = hacia(a.flapsPos ?? flaps, flaps, dt / 4);

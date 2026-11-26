@@ -7,7 +7,8 @@ import { crearBucle, prefiereMenosMovimiento } from './clase/comun.js';
 import { crearCamara, ojoOrbita, baseAvion, suma, por, render, crearTexturas, mezclarAngulo, proyectar } from './clase/motor3d.js';
 import { crearRenderGL } from './clase/motor3d-gl.js';
 import { PALETAS } from './clase/e3d-base.js';
-import { dibujarCabina } from './clase/cabina.js';
+import { dibujarCabina, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
+import { activarToques, bloquearZoom } from './clase/juego-tactil.js';
 import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua } from './clase/vuelo-modelo.js';
 import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz } from './clase/juego-mundo.js';
 import { montarMinimapa } from './clase/e3d-minimapa.js';
@@ -32,7 +33,7 @@ import { traficoInicial, moverCualquiera, alertaTrafico, etiquetaAltura } from '
 import { crearMotor, listaArranque, listaApagado, MOTOR_FAA, encenderMotor, apagarMotor, encenderTodo, mezclaAuto, lucesActivas, medirRunup, listaRunup, PASOS_RUNUP } from './clase/motor-piston.js';
 import { crearPanelMotor, crearPalanca } from './clase/juego-panel-motor.js';
 import { crearSonido } from './clase/juego-sonido.js';
-import { TIEMPOS, TIEMPO_FAA, condiciones, cambioAltimetro, nubesDe } from './clase/juego-tiempo.js';
+import { TIEMPOS, TIEMPO_FAA, condiciones, cambioAltimetro, nubesDe, nivelTurbulencia, mangaDeViento } from './clase/juego-tiempo.js';
 import { pintarDestello } from './clase/e3d-efectos.js';
 import { crearRepeticion, escenaDeRepeticion, estadoRepeticion, camaraRepeticion, primitivasRepeticion, tomaEn, fundido, congelada, ENCUENTROS, CAMARAS } from './clase/juego-repeticion.js';
 export { MINICLASES };
@@ -112,10 +113,23 @@ export function arribaInclinado(giro, alabeo) {
 }
 // 0.14.117: la vista de la cabina: cuánto mira hacia abajo (grados) para que el horizonte quede a unos 3/5 del parabrisas
 // (arriba del tablero se ve el suelo delante: la pista en la final). fov: el vertical; tablero: la parte de abajo que tapa.
-export function miradaCabina(fov, tablero) {
-  const y = 0.6 * (1 - tablero); // dónde queda el horizonte (desde arriba, en fracción del alto)
+// 0.14.118: techo: la parte de arriba que tapa el techo tapizado (fracción): el horizonte, a 3/5 de lo que queda a la vista.
+export function miradaCabina(fov, tablero, techo = 0) {
+  const y = techo + 0.6 * (1 - tablero - techo); // dónde queda el horizonte (desde arriba, en fracción del alto)
   return (Math.atan((0.5 - y) * 2 * Math.tan((fov * Math.PI) / 360)) * 180) / Math.PI;
 }
+// 0.14.118: el viento a mano (en «Menú»): de dónde (8 rumbos) y cuánto; y los flaps de a una muesca (UP → 10 → 20 → 30 → UP).
+export const VIENTO_RUMBOS = Object.freeze([[360, 'n'], [45, 'ne'], [90, 'e'], [135, 'se'], [180, 's'], [225, 'so'], [270, 'o'], [315, 'no']]);
+export const VIENTO_KT = Object.freeze([0, 5, 10, 15, 20, 25]);
+export const siguienteFlaps = f => { const g = flapsAGrados(f); return g >= 30 ? 0 : (g + 10) / 20; };
+export const anteriorFlaps = f => { const g = flapsAGrados(f); return g <= 0 ? 0 : (g - 10) / 20; };
+// El viento elegido a mano, con sus ráfagas (hasta 1.6 veces, que suben y bajan sin ritmo fijo). → { desde, kt }
+export function vientoConRafagas(v, t) {
+  if (!v) return { desde: 360, kt: 0 };
+  const extra = v.rafagas && v.kt > 0 ? v.kt * 0.6 * Math.max(0, Math.sin(t * 0.7) * Math.sin(t * 1.9 + 0.4)) : 0;
+  return { desde: v.desde, kt: v.kt + extra };
+}
+
 // Los mandos con las teclas apretadas: el yugo va hacia ±1 (y vuelve al centro al soltar), la potencia sube o baja.
 export function mandosDeTeclas(apretadas, antes, dt) {
   const meta = { cabeceo: 0, alabeo: 0 };
@@ -195,33 +209,53 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const lienzo = el('canvas', { class: 'juego-lienzo', role: 'img', 'aria-label': t('juego.lienzo') });
   const capa = el('canvas', { class: 'juego-capa', 'aria-hidden': 'true' });
   const chip = el('p', { class: 'juego-chip', role: 'status', 'aria-live': 'polite' });
-  const hud = el('p', { class: 'juego-hud', 'aria-hidden': 'true' });
-  const bVista = boton('juego-vista', t('juego.vista.afuera'), () => cambiarVista());
-  const bAsistente = boton('juego-asistente', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
-  const bFlaps = boton('juego-flaps', t('juego.flaps'), () => { mandos.flaps = mandos.flaps ? 0 : 1; pintarBotones(); }, { 'aria-pressed': 'false' });
+  // 0.14.118: los datos del vuelo en la vista de afuera: un panel chico (abajo a la izquierda), no una línea suelta.
+  const hudCeldas = ['kt', 'ft', 'rumbo', 'vs'].map(k => el('span', { class: 'juego-hud-dato', 'data-dato': k }));
+  const hud = el('div', { class: 'juego-hud', 'aria-hidden': 'true' }, hudCeldas);
+  // 0.14.118 (pedido del dueño: «mejora estos botones… a veces no abren»): botones sólidos, con relieve, la lucecita verde
+  // en los que se prenden y que responden al primer toque (también con el otro dedo en el yugo: clase/juego-tactil.js).
+  // La cámara («Cabina 1/2») arriba a la izquierda; arriba a la derecha, la pausa y «Menú» (la hora, el tráfico, el sonido,
+  // el tiempo y el viento, en una hoja que se desplaza y se cierra).
+  const bVista = boton('juego-vista juego-camara', '', () => cambiarVista());
+  const bAsistente = boton('juego-asistente juego-luz', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
+  const bFlaps = boton('juego-flaps', t('juego.flaps'), () => ponerFlaps(siguienteFlaps(mandos.flaps)), { 'aria-pressed': 'false' });
   const bPausa = boton('juego-pausa', '', () => pausar(!pausado), { 'aria-pressed': 'false', 'aria-label': t('juego.pausa') });
   const bAyuda = boton('juego-ayuda-boton', '?', () => abrirAyuda(), { 'aria-label': t('juego.ayuda.abrir') });
-  // 0.14.100: día, atardecer o noche (se cambia en vivo).
-  const bHora = boton('juego-hora', '', () => ponerHora(HORAS[(HORAS.indexOf(hora) + 1) % HORAS.length]));
+  const botonesHora = HORAS.map(id => boton('juego-hora-opcion juego-luz', t(`juego.hora.${id}`), () => ponerHora(id), { 'data-hora': id, 'aria-pressed': 'false' }));
   const salir = el('a', { class: 'juego-boton juego-salir', href: RUTA, 'aria-label': t('juego.salir') }, icono('cerrar'));
   const marcador = el('p', { class: 'juego-marcador', 'aria-live': 'polite' });
-  // 0.14.102: los botones de arriba, chicos y en grupo; lo que se usa menos va en «⋯» (la hora y el tráfico).
-  const bMas = boton('juego-mas', '⋯', () => { menuMas.hidden = !menuMas.hidden; bMas.setAttribute('aria-expanded', String(!menuMas.hidden)); }, { 'aria-label': t('juego.mas'), 'aria-expanded': 'false' });
-  const bTrafico = boton('juego-trafico-boton', '', () => { conTrafico = !conTrafico; pintarBotones(); }, { 'aria-pressed': 'true' });
-  // 0.14.103: el sonido (apagado al empezar: suena solo después de tocarlo) y el tiempo (despejado, nubes, frentes).
-  const bSonido = boton('juego-sonido-boton', '', () => cambiarSonido(), { 'aria-pressed': 'false' });
-  const botonesTiempo = TIEMPOS.map(id => boton('juego-tiempo-opcion', t(`juego.tiempo.${id}`), () => ponerTiempo(id), { 'data-tiempo': id, 'aria-pressed': 'false' }));
-  // (en el teléfono de pie, «Motor» va en «⋯»: en la barra no cabe)
-  const bAyuda2 = boton('juego-ayuda2', `? ${t('juego.ayuda.abrir')}`, () => { menuMas.hidden = true; bMas.setAttribute('aria-expanded', 'false'); abrirAyuda(); });
-  const menuMas = el('div', { class: 'juego-menu-mas', hidden: true, role: 'group', 'aria-label': t('juego.mas') }, bAyuda2, bHora, bTrafico, bSonido,
-    el('p', { class: 'juego-menu-titulo', texto: t('juego.tiempo') }), botonesTiempo);
+  const bMas = boton('juego-mas', t('juego.menu'), () => abrirMenu(menuMas.hidden), { 'aria-label': t('juego.mas'), 'aria-expanded': 'false', 'aria-haspopup': 'dialog' });
+  const bTrafico = boton('juego-trafico-boton juego-luz', '', () => { conTrafico = !conTrafico; pintarBotones(); }, { 'aria-pressed': 'true' });
+  const bSonido = boton('juego-sonido-boton juego-luz', '', () => cambiarSonido(), { 'aria-pressed': 'false' });
+  const botonesTiempo = TIEMPOS.map(id => boton('juego-tiempo-opcion juego-luz', t(`juego.tiempo.${id}`), () => ponerTiempo(id), { 'data-tiempo': id, 'aria-pressed': 'false' }));
+  // El viento a mano: de dónde (8 rumbos), cuánto (0 a 25 kt) y con ráfagas; «Según el tiempo» vuelve al del tiempo elegido.
+  const bVientoAuto = boton('juego-viento-auto juego-luz', t('juego.viento.auto'), () => ponerViento(null), { 'aria-pressed': 'true' });
+  const botonesVientoDir = VIENTO_RUMBOS.map(([d, k]) => boton('juego-viento-dir juego-luz', t(`juego.viento.${k}`), () => ponerViento({ desde: d }), { 'data-desde': String(d), 'aria-pressed': 'false', 'aria-label': t('juego.viento.desde', { d: String(d).padStart(3, '0') }) }));
+  const botonesVientoKt = VIENTO_KT.map(kt => boton('juego-viento-kt juego-luz', `${kt} kt`, () => ponerViento({ kt }), { 'data-kt': String(kt), 'aria-pressed': 'false' }));
+  const bRafagas = boton('juego-rafagas juego-luz', t('juego.viento.rafagas'), () => ponerViento({ rafagas: !(vientoManual?.rafagas) }), { 'aria-pressed': 'false' });
+  const vientoAhora = el('p', { class: 'juego-hoja-nota', 'aria-live': 'polite' });
+  const bAyuda2 = boton('juego-ayuda2', `? ${t('juego.ayuda.abrir')}`, () => { abrirMenu(false); abrirAyuda(); });
+  // (vertical u horizontal: en el teléfono, en la hoja)
+  const bOrientacion = boton('juego-orientacion', '', () => { abrirMenu(false); cambiarOrientacion(); });
+  const bCerrarMenu = boton('juego-hoja-cerrar', t('juego.menu.cerrar'), () => abrirMenu(false));
+  const tituloHoja = k => el('h3', { class: 'juego-menu-titulo', texto: t(k) });
+  const menuMas = el('div', { class: 'juego-hoja-capa', hidden: true },
+    el('div', { class: 'juego-hoja-fondo', 'aria-hidden': 'true', onclick: () => abrirMenu(false) }),
+    el('section', { class: 'juego-hoja', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'juego-hoja-titulo' },
+      el('div', { class: 'juego-hoja-cabeza' }, el('h2', { id: 'juego-hoja-titulo', texto: t('juego.mas') }), bCerrarMenu),
+      el('div', { class: 'juego-hoja-cuerpo juego-se-desplaza' },
+        el('div', { class: 'juego-hoja-fila' }, bAyuda2, tactil ? bOrientacion : null, bTrafico, bSonido),
+        tituloHoja('juego.menu.hora'), el('div', { class: 'juego-hoja-fila' }, botonesHora),
+        tituloHoja('juego.tiempo'), el('div', { class: 'juego-hoja-fila' }, botonesTiempo),
+        tituloHoja('juego.viento'), vientoAhora,
+        el('div', { class: 'juego-hoja-fila' }, bVientoAuto, bRafagas),
+        el('div', { class: 'juego-hoja-fila juego-rosa', role: 'group', 'aria-label': t('juego.viento.de_donde') }, botonesVientoDir),
+        el('div', { class: 'juego-hoja-fila', role: 'group', 'aria-label': t('juego.viento.cuanto') }, botonesVientoKt))));
   // 0.14.103: el motor: master, magnetos, selector de combustible, mezcla, sus relojes y la lista del arranque o el apagado.
-  // 0.14.105: «Motor» siempre a la vista en la barra (un toque abre el cajón del motor).
-  const bMotor = boton('juego-motor-boton', [icono('motor', 'icono'), el('span', { class: 'juego-motor-boton-texto', texto: t('juego.motor') })], () => abrirMotor(panelMotor.hidden), { 'aria-expanded': 'false', 'aria-label': t('juego.motor') });
-  // 0.14.102: vertical u horizontal (en el teléfono).
-  const bOrientacion = boton('juego-orientacion', '', () => cambiarOrientacion());
-  const barra = el('div', { class: 'juego-barra' }, el('div', { class: 'juego-barra-izq' }, salir, marcador),
-    el('div', { class: 'juego-barra-botones' }, tactil ? bOrientacion : null, bMotor, bVista, bFlaps, bAsistente, bMas, bPausa, bAyuda, menuMas));
+  // 0.14.118: «Componentes ⇧»: la pestaña abajo al centro abre el cajón (los interruptores con su luz).
+  const bMotor = boton('juego-motor-boton juego-componentes', [icono('motor', 'icono'), el('span', { class: 'juego-motor-boton-texto', texto: t('juego.componentes') }), el('span', { class: 'juego-flecha', 'aria-hidden': 'true', texto: '⇧' })], () => abrirMotor(panelMotor.hidden), { 'aria-expanded': 'false', 'aria-label': t('juego.componentes') });
+  const barra = el('div', { class: 'juego-barra' }, el('div', { class: 'juego-barra-izq' }, salir, bVista, marcador),
+    el('div', { class: 'juego-barra-botones' }, bFlaps, bAsistente, bPausa, bMas, bAyuda));
   // La oferta («¿la tomas?») y el aviso (la respuesta, la falla, la radio): abajo de la escena, sin tapar la cabina entera.
   const oferta = el('section', { class: 'juego-oferta', hidden: true, role: 'alertdialog', 'aria-labelledby': 'juego-oferta-titulo' });
   const aviso = el('section', { class: 'juego-aviso', hidden: true, role: 'status', 'aria-live': 'polite' });
@@ -235,9 +269,18 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const repeLlamada = el('p', { class: 'juego-repe-llamada', role: 'status', 'aria-live': 'polite', hidden: true });
   const bSaltar = el('button', { type: 'button', class: 'juego-boton juego-repe-saltar', onclick: () => saltarRepeticion() }, t('juego.rep.saltar'));
   const capaRepe = el('div', { class: 'juego-repe', hidden: true }, repeCamara, repeLlamada, bSaltar);
-  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, chip, subtitulo, hud, oferta, aviso, panelClase, pildoraClase, capaRepe);
+  // 0.14.118: la segunda fila (debajo de los botones, sobre el techo de la cabina): el consejo, corto, a la izquierda; a la
+  // derecha el panel de información (tiempo de vuelo, distancia, combustible y el aeropuerto al que se va).
+  const infoTiempo = el('span', { class: 'juego-info-dato' }), infoDist = el('span', { class: 'juego-info-dato' });
+  const infoComb = el('span', { class: 'juego-info-comb' }, el('span', { class: 'juego-info-barra' }, el('span', { class: 'juego-info-lleno' })), el('span', { class: 'juego-info-gal' }));
+  const destino = el('p', { class: 'juego-destino', 'aria-live': 'off' });
+  const info = el('div', { class: 'juego-info', 'aria-hidden': 'true' }, el('div', { class: 'juego-info-fila' }, infoTiempo, infoDist, infoComb), destino);
+  const fila2 = el('div', { class: 'juego-fila2' }, el('div', { class: 'juego-fila2-izq' }, subtitulo, chip), info);
+  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, fila2, hud, oferta, aviso, panelClase, pildoraClase, capaRepe, bMotor);
 
-  // El yugo (arrastrar) y la palanca de potencia (en el teléfono; en la PC también se pueden usar con el ratón).
+  // Los mandos en pantalla (teléfono y tableta), en dos paneles en los bordes: a la izquierda la palanca de potencia, la de
+  // los flaps (UP · 10 · 20 · 30), el freno (mantener) y el freno de mano; a la derecha los atajos y el yugo con la rueda de
+  // compensación. El centro queda libre para el avión y el horizonte.
   const perilla = el('span', { class: 'juego-yugo-perilla', 'aria-hidden': 'true' });
   const yugo = el('div', { class: 'juego-yugo', role: 'application', 'aria-label': t('juego.yugo') },
     el('span', { class: 'juego-yugo-rotulo juego-arriba', 'aria-hidden': 'true', texto: t('juego.yugo.empujar') }),
@@ -248,10 +291,26 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const potencia = el('div', { class: 'juego-potencia', role: 'slider', tabindex: 0, 'aria-label': t('juego.potencia'), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': 0, 'aria-orientation': 'vertical' },
     el('span', { class: 'juego-potencia-pista' }, relleno, manija));
   const textoPotencia = el('span', { class: 'juego-potencia-valor', texto: '0 %' });
+  const muescas = FLAPS_GRADOS.map((g, k) => boton('juego-muesca', g ? `${g}°` : 'UP', () => ponerFlaps(k * 0.5), { 'data-f': String(k * 0.5), 'aria-pressed': 'false', 'aria-label': t('juego.flaps.a', { g: g ? `${g}°` : 'UP' }) }));
+  const bFreno = el('button', { type: 'button', class: 'juego-boton juego-freno', 'data-propio': '1', 'aria-pressed': 'false' }, t('juego.freno'));
+  const bFrenoMano = boton('juego-freno-mano juego-luz', t('juego.freno.mano'), () => { mandos.frenoMano = !mandos.frenoMano; pintarBotones(); }, { 'aria-pressed': 'false' });
+  const bAsistente2 = boton('juego-asistente2 juego-luz', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
+  const bMapa = boton('juego-mapa-boton juego-luz', t('juego.mapa'), () => { verMapa = !verMapa; pintarBotones(); dibujarMapa(); }, { 'aria-pressed': 'false' });
+  const trimMarca = el('span', { class: 'juego-trim-marca', 'aria-hidden': 'true' });
+  const bTrimAbajo = boton('juego-trim-b', '▲', () => moverTrim(-1), { 'aria-label': t('juego.trim.abajo') });
+  const bTrimArriba = boton('juego-trim-b', '▼', () => moverTrim(1), { 'aria-label': t('juego.trim.arriba') });
   const mandosTactiles = el('div', { class: 'juego-mandos' },
-    el('div', { class: 'juego-potencia-caja' }, el('span', { class: 'juego-mando-nombre', texto: t('juego.potencia') }), potencia, textoPotencia),
-    el('div', { class: 'juego-mandos-medio' }, boton('juego-flaps2', t('juego.flaps'), () => { mandos.flaps = mandos.flaps ? 0 : 1; pintarBotones(); }, { 'aria-pressed': 'false' }), boton('juego-vista2', t('juego.vista.afuera'), () => cambiarVista())),
-    el('div', { class: 'juego-yugo-caja' }, el('span', { class: 'juego-mando-nombre', texto: t('juego.yugo') }), yugo));
+    el('div', { class: 'juego-panel juego-panel-izq' },
+      el('div', { class: 'juego-palancas' },
+        el('div', { class: 'juego-potencia-caja' }, el('span', { class: 'juego-mando-nombre', texto: t('juego.potencia') }), potencia, textoPotencia),
+        el('div', { class: 'juego-flaps-caja', role: 'group', 'aria-label': t('juego.flaps.nombre') }, el('span', { class: 'juego-mando-nombre', texto: t('juego.flaps.nombre') }), el('div', { class: 'juego-flaps-riel' }, muescas))),
+      el('div', { class: 'juego-frenos' }, bFreno, bFrenoMano)),
+    el('div', { class: 'juego-panel juego-panel-der' },
+      el('div', { class: 'juego-atajos', role: 'group', 'aria-label': t('juego.atajos') }, bAsistente2, bMapa),
+      el('div', { class: 'juego-yugo-marco' },
+        el('div', { class: 'juego-yugo-caja' }, el('span', { class: 'juego-mando-nombre', texto: t('juego.yugo') }), yugo),
+        el('div', { class: 'juego-trim-caja', role: 'group', 'aria-label': t('juego.trim') }, el('span', { class: 'juego-mando-nombre', texto: 'TRIM' }), bTrimAbajo,
+          el('span', { class: 'juego-trim-escala', 'aria-hidden': 'true' }, el('span', { class: 'juego-trim-rueda' }), trimMarca), bTrimArriba))));
 
   // Cómo se vuela (la primera vez y con «?»).
   const ayuda = el('div', { class: 'juego-capa-dialogo', hidden: true },
@@ -262,7 +321,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
         el('figure', { class: 'juego-mini' }, el('span', { class: 'juego-mini-potencia' }, el('span', { class: 'juego-mini-manija' })), el('figcaption', { texto: t('juego.ayuda.mini_potencia') })),
         el('figure', { class: 'juego-mini' }, el('span', { class: 'juego-mini-yugo' }, el('span', { class: 'juego-mini-perilla' })), el('figcaption', { texto: t('juego.ayuda.mini_yugo') }))) : null,
       el('ul', { class: 'juego-teclas' },
-        (tactil ? ['yugo', 'tirar', 'potencia_tactil', 'flaps_tactil', 'vista_tactil'] : ['flechas', 'tirar_teclas', 'potencia_teclas', 'flaps_teclas', 'vista_teclas', 'pausa_teclas'])
+        (tactil ? ['yugo', 'tirar', 'potencia_tactil', 'flaps_tactil', 'freno_tactil', 'vista_tactil'] : ['flechas', 'tirar_teclas', 'potencia_teclas', 'flaps_teclas', 'freno_teclas', 'vista_teclas', 'pausa_teclas'])
           .map(k => { const [tecla, que] = t(`juego.ayuda.${k}`).split(' — '); return el('li', {}, el('kbd', { texto: tecla }), el('span', { texto: que ?? '' })); })),
       el('p', { class: 'juego-nota', texto: t('juego.ayuda.asistente') }),
       el('p', { class: 'juego-nota', texto: t('juego.ayuda.aterrizar') }),
@@ -286,13 +345,19 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // La pregunta (en el centro; el vuelo se detiene mientras se lee y se elige).
   const pregunta = el('div', { class: 'juego-capa-dialogo juego-capa-pregunta', hidden: true });
   const explicacion = el('div', { class: 'juego-capa-dialogo juego-capa-pregunta', hidden: true });
-  const raiz = el('div', { class: 'juego-vuelo', 'data-vista': 'cabina', 'data-tactil': tactil ? '1' : '0', 'data-modo': modo }, escenario, mandosTactiles, ayuda, resultado, pregunta, explicacion);
+  const raiz = el('div', { class: 'juego-vuelo', 'data-vista': 'cabina', 'data-tactil': tactil ? '1' : '0', 'data-modo': modo }, escenario, mandosTactiles, menuMas, ayuda, resultado, pregunta, explicacion);
   mostrar(raiz);
   document.body.classList.add('juego-activo');
+  // 0.14.118: los botones al primer toque (también con otro dedo en el yugo) y sin zoom mientras se vuela.
+  const toques = activarToques(raiz);
+  const sinZoom = bloquearZoom(document, raiz);
 
   // ---- el estado ----
   let avion = inicioDe(modo);
-  const mandos = { cabeceo: 0, alabeo: 0, potencia: avion.potencia, flaps: avion.flaps };
+  const mandos = { cabeceo: 0, alabeo: 0, potencia: avion.potencia, flaps: avion.flaps, freno: 0, frenoMano: false };
+  // 0.14.118: el viento elegido a mano (null: el del tiempo), el mapa a la vista (en el teléfono se abre con «Mapa»), la
+  // turbulencia de ahora (0..1) y lo recorrido.
+  let vientoManual = null, verMapa = !tactil, turbLeve = 0, recorridoNm = 0;
   // (0.14.117: el yugo táctil: donde tocó primero es el centro; cabeceo/alabeo, lo que pide el dedo; suave, lo que llega)
   const toque = { activo: false, cabeceo: 0, alabeo: 0, x0: 0, y0: 0, suave: { cabeceo: 0, alabeo: 0 } };
   const apretadas = new Set();
@@ -328,6 +393,23 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     lienzo.addEventListener('webglcontextrestored', () => { gl3 = crearRenderGL(lienzo); });
   }
   let ancho = 640, alto = 400, escalaPx = 1, calidad = 1, lentos = 0, cuadros = 0;
+  // 0.14.118: lo fijo de la cabina se guarda en lienzos aparte (se dibuja una vez); y hasta dónde baja el techo tapizado:
+  // debajo de los botones y del consejo (que nunca tapan el parabrisas). Se mide cada tanto (no en cada cuadro).
+  const crearLienzo = (w, hh) => { const c = document.createElement('canvas'); c.width = w; c.height = hh; return c; };
+  let techoMedido = 0;
+  const FILA2_RESERVA = 50; // px: dos líneas del consejo (o el panel de información)
+  const techoUI = () => techoMedido * escalaPx;
+  function medirTecho() {
+    const base = escenario.getBoundingClientRect().top;
+    // (el lugar del consejo queda reservado para dos líneas: el techo no sube y baja con cada consejo ni con el que se esconde)
+    let b = 0;
+    for (const n of escenario.querySelectorAll(':scope > .juego-barra, :scope > .juego-fila2')) {
+      if (!n.getClientRects().length) continue;
+      const r = n.getBoundingClientRect();
+      b = Math.max(b, r.bottom - base, n.classList.contains('juego-fila2') ? r.top - base + FILA2_RESERVA : 0);
+    }
+    techoMedido = Math.round(b + 6);
+  }
   function medir() {
     const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, tactil ? 1.6 : 2) * calidad;
     const w = lienzo.clientWidth || 640, hh = lienzo.clientHeight || 400;
@@ -342,11 +424,14 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       // (en las mini-clases para mirar, una vista acercada: la pista, el PAPI y las luces de lejos se distinguen)
       // (en las mini-clases, mc.fov es el campo horizontal: de pie, el vertical se agranda para mirar lo mismo)
       const fov = mc?.fov ? (ancho < alto ? (2 * Math.atan(Math.tan((mc.fov * Math.PI) / 360) * (alto / ancho)) * 180) / Math.PI : mc.fov) : (ancho < alto ? 74 : 56);
-      const tablero = Math.min(0.62, Math.max(alto * (ancho > alto ? 0.5 : 0.46), 170 * escalaPx) / Math.max(1, alto));
-      const b = baseAvion(avion.rumbo, avion.cabeceo - (mc?.fov ? 7 * (fov / 74) : miradaCabina(fov, tablero)), avion.alabeo);
+      const geo = geometriaCabina(ancho, alto, { escala: escalaPx, techo: techoUI() });
+      const tablero = Math.min(0.62, geo.panel / Math.max(1, alto)), techoF = geo.techo / Math.max(1, alto);
+      const b = baseAvion(avion.rumbo, avion.cabeceo - (mc?.fov ? 7 * (fov / 74) : miradaCabina(fov, tablero, techoF)), avion.alabeo);
       // La cabeza se mueve con los g (baja al tirar) y con la turbulencia (suave, sin marear).
-      const turb = tiempo < rafagaHasta ? 1 : 0;
-      const metaY = reducir ? 0 : -Math.max(-0.5, Math.min(2, (avion.g ?? 1) - 1)) * 0.00025 + turb * Math.sin(tiempo * 9.1) * 0.00012;
+      // (0.14.118: la turbulencia de siempre también sacude, suave; en la carrera, el traqueteo de las ruedas)
+      const turb = tiempo < rafagaHasta ? 1 : Math.min(1, turbLeve * 2.5);
+      const rueda = avion.enSuelo && avion.kt > 1 && !avion.agua ? Math.min(1, avion.kt / 45) * (Math.sin(tiempo * 23.3) * 0.6 + Math.sin(tiempo * 37.1) * 0.4) * 0.00003 : 0;
+      const metaY = reducir ? 0 : -Math.max(-0.5, Math.min(2, (avion.g ?? 1) - 1)) * 0.00025 + turb * Math.sin(tiempo * 9.1) * 0.00012 + rueda;
       const metaX = reducir ? 0 : turb * Math.sin(tiempo * 6.3 + 1) * 0.00012;
       cabeza = { y: cabeza.y + (metaY - cabeza.y) * 0.15, x: cabeza.x + (metaX - cabeza.x) * 0.15 };
       const ojo = suma(suma(suma(pos, por(b.U, 0.0017 + cabeza.y)), por(b.F, 0.0016)), por(b.R, cabeza.x));
@@ -427,13 +512,14 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       // Los relojes con su retraso de verdad (el variómetro sigue la tendencia).
       const L = lecturas({ ...avion, vs: indicado?.vs ?? avion.vs, ft: indicado?.ft ?? avion.ft });
       // La vibración del motor (muy poca) y la de la turbulencia.
-      const vib = reducir ? 0 : ((avion.rpm ?? 0) / 2700) * 0.5 * escalaPx + (tiempo < rafagaHasta ? 1.5 * escalaPx : 0) + (avion.aviso ? 1.2 * escalaPx : 0);
+      const vib = reducir ? 0 : ((avion.rpm ?? 0) / 2700) * 0.5 * escalaPx + (tiempo < rafagaHasta ? 1.5 * escalaPx : Math.min(1, turbLeve * 2) * 0.8 * escalaPx) + (avion.aviso ? 1.2 * escalaPx : 0) + (avion.enSuelo && avion.kt > 3 ? Math.min(1, avion.kt / 50) * 0.7 * escalaPx : 0);
       ctx.save();
       if (vib) ctx.translate(Math.sin(tiempo * 83) * vib, Math.cos(tiempo * 71) * vib);
       efectosVentana(ctx);
-      techo = alto - dibujarCabina(ctx, ancho, alto, L, { escala: escalaPx, completo: true, yugo: mandosAhora(), textos: TEXTOS_PANEL(t), noche: hora === 'noche',
-        extras: { trim: Math.max(-1, Math.min(1, ((avion.trim ?? 4) - 4) / 7)), flaps: avion.flapsPos ?? avion.flaps, potencia: mandos.potencia, g: avion.enSuelo ? null : avion.g,
-          egt: avion.pist ? avion.pist.egt ?? 100 : null, ff: avion.pist?.flujoGph ?? 0, ajuste } });
+      const pm = avion.pist;
+      techo = alto - dibujarCabina(ctx, ancho, alto, L, { escala: escalaPx, completo: true, yugo: mandosAhora(), textos: TEXTOS_PANEL(t), hora, techo: techoUI(), crearLienzo,
+        extras: { trim: Math.max(-1, Math.min(1, ((avion.trim ?? 4) - 4) / 7)), flaps: avion.flapsPos ?? avion.flaps, flapsMando: mandos.flaps, potencia: mandos.potencia, g: avion.enSuelo ? null : avion.g,
+          egt: pm ? pm.egt ?? 100 : null, ff: pm?.flujoGph ?? 0, ajuste, mezcla: pm?.mezcla ?? 1, calor: Boolean(pm?.calor), magnetos: pm?.magnetos ?? 'BOTH', master: pm ? Boolean(pm.master) : true, luces: lucesDe(avion) } });
       ctx.restore();
     }
     // El rayo: un destello que se apaga solo.
@@ -478,6 +564,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // ---- el mini-mapa: el de las consecuencias 3D (clase/e3d-minimapa.js), con la pista 36 y su eje extendido ----
   const cajaMapa = el('div', { class: 'juego-mapas' });
+  // (el aeropuerto de destino va en el panel de información; aquí, el zoom)
   escenario.append(cajaMapa);
   const Tm = (k, v) => t(`clase.e3d.sit.ctl.${k}`, v);
   // (0.14.113: en la mini-clase del amarizaje, el mapa de cerca abarca desde el comienzo hasta el lago)
@@ -485,8 +572,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const mapas = { cerca: montarMinimapa(cajaMapa, mapaCerca[0], { T: Tm, zonas: mapaCerca[1], decision: false }), lejos: montarMinimapa(cajaMapa, MAPA_LEJOS, { T: Tm, zonas: ZONAS_LEJOS, decision: false }) };
   let mapaLejos = false;
   const bZoom = el('button', { type: 'button', class: 'juego-boton juego-mapa-zoom', 'aria-label': t('juego.mapa.zoom'), onclick: () => { mapaLejos = !mapaLejos; pintarMapas(); } }, '±');
-  const destino = el('p', { class: 'juego-destino', 'aria-live': 'off' });
-  cajaMapa.append(el('div', { class: 'juego-mapa-fila' }, destino, bZoom));
+  cajaMapa.append(el('div', { class: 'juego-mapa-fila' }, bZoom));
   function pintarMapas() {
     mapas.cerca.nodo.hidden = mapaLejos; mapas.lejos.nodo.hidden = !mapaLejos;
     bZoom.setAttribute('aria-pressed', String(mapaLejos));
@@ -512,7 +598,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     const k = mandosDeTeclas(apretadas, mandos, dt);
     mandos.cabeceo = k.cabeceo; mandos.alabeo = k.alabeo;
     if (apretadas.size && [...apretadas].some(x => TECLAS[x]?.[0] === 'potencia')) mandos.potencia = k.potencia;
-    let m = { ...mandosAhora(), potencia: mandos.potencia, flaps: mandos.flaps };
+    let m = { ...mandosAhora(), potencia: mandos.potencia, flaps: mandos.flaps, freno: mandos.freno || mandos.frenoMano ? 1 : 0 };
     if (guiado) m = mandosGuiados();
     if (sostener) m = { ...piloto(avion, sostener), flaps: mandos.flaps };
     // En una mini-clase «quieta» el avión propio no se mueve (para mirar); el reloj sigue (el faro, las luces) y, en la
@@ -537,9 +623,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       else if (anda || avion.pist?.motivo) mostrarAviso({ tono, titulo, partes: [texto], corto: anda || avion.enSuelo });
     }
     mezclaDelAsistente();
-    const amb = { viento: ambiente.viento, rafaga: tiempo < rafagaHasta ? rafaga : null };
+    // (0.14.118: entre ráfaga y ráfaga, la turbulencia de siempre: suave con buen tiempo, más con viento, nubes o tormenta)
+    const amb = { viento: ambiente.viento, rafaga: tiempo < rafagaHasta ? rafaga : !mc && turbLeve > 0.005 ? rafagaLeve : null };
     const antes = avion;
     avion = pasoVuelo(avion, m, dt, { asistente: asistente || Boolean(sostener), ambiente: amb });
+    recorridoNm += ((avion.velSuelo ?? 0) * dt) / 3600;
     // La práctica del motor: con el freno de estacionamiento (no se mueve) y midiendo las caídas de RPM de la prueba.
     if (modoActual === 'motor') {
       avion = { ...avion, x: PARQUEO.x, z: PARQUEO.z, rumbo: PARQUEO.rumbo, kt: 0, cabeceo: 0, alabeo: 0 };
@@ -579,7 +667,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       chip.textContent = texto; chip.setAttribute('data-tono', clave === 'perdida' || clave === 'choque' ? 'mal' : 'bien'); ultimoConsejo = clave; }
     const L = lecturas(avion);
     const linea = t('juego.hud', { kt: Math.round(L.kt), ft: Math.round(L.ft).toLocaleString('en-US'), rumbo: String(Math.round(L.rumbo) % 360 || 360).padStart(3, '0'), vs: Math.round(L.vs / 50) * 50 });
-    if (linea !== ultimoHud) { hud.textContent = linea; ultimoHud = linea; }
+    if (linea !== ultimoHud) {
+      ultimoHud = linea;
+      // (0.14.118: en cuatro celdas: velocidad, altitud, rumbo y variómetro)
+      linea.split(' · ').forEach((x, i) => { if (hudCeldas[i] && hudCeldas[i].textContent !== x) hudCeldas[i].textContent = x; });
+    }
     pintarEstado(L);
     pintarMarcador();
     pintarClaseVivo();
@@ -610,7 +702,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (conSonido) sonido.actualizar({ rpm: avion.rpm, enMarcha: avion.pist?.enMarcha ?? true, kt: avion.kt, aviso: avion.aviso && !avion.enSuelo,
       aspereza: Math.max(avion.rugido ?? 0, avion.pist?.aspereza ?? 0), girando: avion.pist?.girando, turbulencia: cond.turbulencia + (tiempo < rafagaHasta ? 0.5 : 0), lluvia: cond.lluvia });
     relojHud += dt;
-    if (relojHud > 0.2) { relojHud = 0; pintarTextos(); dibujarMapa(); pintarMotor(); pintarRunup(); }
+    if (relojHud > 0.2) { relojHud = 0; pintarTextos(); dibujarMapa(); pintarMotor(); pintarRunup(); pintarInfo(); medirTecho(); if (!menuMas.hidden) pintarViento(); }
     if (t0) { cuadros++; if (dt > 1 / 24) lentos++; if (cuadros >= 60) { if (lentos > 35 && calidad > 0.7) calidad = Math.max(0.7, calidad - 0.15); cuadros = 0; lentos = 0; } }
   });
 
@@ -644,12 +736,12 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // Con mal tiempo, las preguntas son de meteorología.
     if (tiempoMet !== 'despejado' && e.tipo === 'pregunta') e.tema = 'meteo';
     if (e.tipo === 'cruzado') {
-      ambiente = { ...ambiente, viento: vientoCruzado(azar) };
+      vientoManual = null; ambiente = { ...ambiente, viento: vientoCruzado(azar) };
       mostrarAviso({ tono: 'info', titulo: t('juego.ev.cruzado.titulo'), partes: [t('juego.ev.cruzado', { desde: tresDigitos(ambiente.viento.desde), kt: ambiente.viento.kt })] });
       return;
     }
     if (e.tipo === 'tormenta') ponerTormenta();
-    if (e.tipo === 'viento') ambiente = { ...ambiente, viento: vientoNuevo(azar, ambiente.viento) };
+    if (e.tipo === 'viento') { vientoManual = null; ambiente = { ...ambiente, viento: vientoNuevo(azar, ambiente.viento) }; }
     ofrecer(e);
   }
   function ponerTormenta() {
@@ -684,7 +776,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   function abrirPregunta(item, e = null) {
     flujo = crearFlujo(item, e);
     sostener = avion.enSuelo ? null : { rumbo: avion.rumbo, ft: avion.ft };
-    abierta = true; aviso.hidden = true; oferta.hidden = true; menuMas.hidden = true;
+    abierta = true; aviso.hidden = true; oferta.hidden = true; menuMas.hidden = true; bMas.setAttribute('aria-expanded', 'false'); raiz.setAttribute('data-menu', '0');
     while (pregunta.firstChild) pregunta.removeChild(pregunta.firstChild);
     const q = item.q;
     const botones = q.opciones.map(o => el('button', { type: 'button', class: 'juego-opcion-respuesta', 'data-letra': o.letra, onclick: () => responder(item, o.letra, botones) },
@@ -744,7 +836,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (cons === 'aceite') { if (fallaDesde == null) fallaDesde = tiempo - 12; return { consecuencia: 'aceite', subtitulo: t('juego.falla.aceite') }; }
     if (cons === 'turbulencia') {
       rafaga = rafagaTurbulencia(1, 2); rafagaHasta = tiempo + JUEGO.turbulenciaS;
-      ambiente = { ...ambiente, viento: vientoNuevo(azar, ambiente.viento) };
+      vientoManual = null; ambiente = { ...ambiente, viento: vientoNuevo(azar, ambiente.viento) };
       return { consecuencia: 'turbulencia', subtitulo: t('juego.falla.turbulencia') };
     }
     return { consecuencia: 'atc', subtitulo: t('juego.falla.atc.radio') };
@@ -852,6 +944,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // El PAPI y el VASI (también de día), solo desde la aproximación.
     for (const l of lucesSenda(avion.x, avion.z, avion.ft).luces) if (!l.apagada) out.push(prima(l, { r: 0.003, min: hora === 'dia' ? 1.8 : 1.6 }));
     if (conTrafico) for (const tr of trafico) out.push(...primitivasTrafico(tr, { x: ojo[0], z: ojo[2] }, { hora, t: tiempo }));
+    // 0.14.118: la manga de viento junto a la cabecera (se ve desde la pista y en la final).
+    if (Math.hypot(ojo[0], ojo[2] + 1.55) < 4) out.push(...mangaDeViento(ambiente.viento, tiempo));
     return out;
   }
   function ponerHora(nueva) {
@@ -1146,22 +1240,27 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     tiempoMet = id; nubesTiempo = nubesConLuz(nubesDe(id), paleta); mundo = construirMundo(paleta, { conNubes: id === 'despejado' });
     zonaAvisada = null; ajusteDicho = null; dentroAvisado = false; oferta.hidden = true;
     cond = condiciones(id, avion.x, avion.z, avion.ft);
-    if (id === 'despejado') { ambiente = { ...ambiente, viento: { desde: 360, kt: 0 } }; ajuste = 29.92; }
+    if (id === 'despejado') { if (!vientoManual) ambiente = { ...ambiente, viento: { desde: 360, kt: 0 } }; ajuste = 29.92; }
     else ajuste = cond.altimetro;
     raiz.setAttribute('data-tiempo', id);
     for (const b of botonesTiempo) b.setAttribute('aria-pressed', String(b.dataset.tiempo === id));
-    bMas.setAttribute('aria-expanded', 'false'); menuMas.hidden = true;
+    pintarViento();
     if (callado) return;
     if (id === 'despejado') { mostrarAviso({ tono: 'info', titulo: t('juego.tiempo.despejado'), partes: [], corto: true }); return; }
     const f = id === 'nubes' ? TIEMPO_FAA.nubes : TIEMPO_FAA[id];
     mostrarAviso({ tono: 'info', titulo: t(`juego.tiempo.${id}`), partes: [t(`juego.tiempo.${id}.texto`), t('juego.fuente', { f: f.fuente })] });
   }
   // Lo del tiempo en cada paso: el viento (con ráfagas), la turbulencia, el altímetro que da el control y los rayos.
+  const baseLeve = rafagaTurbulencia(1, 7);
+  const rafagaLeve = tt => { const r = baseLeve(tt); r.cabeceo *= turbLeve; r.alabeo *= turbLeve; return r; };
   function tiempoPaso() {
     cond = condiciones(tiempoMet, avion.x, avion.z, avion.ft);
+    // 0.14.118: el viento elegido a mano manda (con sus ráfagas); la turbulencia sale del tiempo, el viento y la hora.
+    if (vientoManual) ambiente = { ...ambiente, viento: vientoConRafagas(vientoManual, tiempo) };
+    turbLeve = nivelTurbulencia(cond, { ft: avion.ft, enSuelo: avion.enSuelo, hora, viento: vientoManual ? { kt: vientoManual.kt, rafagas: vientoManual.rafagas ? vientoManual.kt * 1.6 : 0 } : ambiente.viento });
     if (tiempoMet === 'despejado') return;
     const v = cond.viento;
-    ambiente = { ...ambiente, viento: { desde: v.desde, kt: v.kt + (v.rafagas ? (v.rafagas - v.kt) * Math.max(0, Math.sin(tiempo * 0.7) * Math.sin(tiempo * 1.9)) : 0) } };
+    if (!vientoManual) ambiente = { ...ambiente, viento: { desde: v.desde, kt: v.kt + (v.rafagas ? (v.rafagas - v.kt) * Math.max(0, Math.sin(tiempo * 0.7) * Math.sin(tiempo * 1.9)) : 0) } };
     if (cond.turbulencia > 0.05) { rafaga = rafagaTurbulencia(Math.min(1.6, cond.turbulencia * 1.3), 4); rafagaHasta = tiempo + 0.5; }
     if (cambioAltimetro(ajusteDicho, cond.altimetro)) {
       const primera = ajusteDicho == null;
@@ -1209,7 +1308,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   }
   function reiniciar(m) {
     avion = inicioDe(m);
-    mandos.potencia = avion.potencia; mandos.flaps = avion.flaps; mandos.cabeceo = 0; mandos.alabeo = 0;
+    mandos.potencia = avion.potencia; mandos.flaps = avion.flaps; mandos.cabeceo = 0; mandos.alabeo = 0; mandos.frenoMano = false; mandos.freno = 0; recorridoNm = 0;
     volo = m === 'final' || m === 'preguntas'; ultimoToque = -10; tiempo = 0; camAfuera = null;
     puntaje = puntajeInicial(); agenda = crearAgenda(azar); ambiente = { viento: { desde: 360, kt: 0 } }; rafagaHasta = -1; fallaDesde = null; decision = null;
     extras = []; nubeFalla = null; desvioHasta = -1; oferta.hidden = true; aviso.hidden = true; pregunta.hidden = true; explicacion.hidden = true; subtitulo.hidden = true; abierta = false;
@@ -1224,20 +1323,71 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // ---- botones ----
   function cambiarVista() { vista = vista === 'cabina' ? 'afuera' : 'cabina'; raiz.setAttribute('data-vista', vista); pintarBotones(); }
   function pintarBotones() {
-    for (const b of [bVista, raiz.querySelector('.juego-vista2')]) if (b) b.textContent = t(vista === 'cabina' ? 'juego.vista.afuera' : 'juego.vista.cabina');
-    bAsistente.setAttribute('aria-pressed', String(asistente));
-    for (const b of [bFlaps, raiz.querySelector('.juego-flaps2')]) if (b) { b.setAttribute('aria-pressed', String(Boolean(mandos.flaps))); b.textContent = t(mandos.flaps ? 'juego.flaps.abajo' : 'juego.flaps'); }
-    bHora.textContent = t(`juego.hora.${hora}`);
+    // La cámara: «Cabina 1/2» o «Afuera 2/2» (un toque pasa a la otra).
+    const cab = vista === 'cabina';
+    bVista.textContent = `${t(cab ? 'juego.camara.cabina' : 'juego.camara.afuera')} ${cab ? 1 : 2}/2`;
+    bVista.setAttribute('aria-label', t('juego.camara.cambiar', { vista: t(cab ? 'juego.camara.cabina' : 'juego.camara.afuera'), n: cab ? 1 : 2 }));
+    for (const b of [bAsistente, bAsistente2]) b.setAttribute('aria-pressed', String(asistente));
+    const g = flapsAGrados(mandos.flaps);
+    bFlaps.setAttribute('aria-pressed', String(g > 0)); bFlaps.textContent = g ? t('juego.flaps.grados', { g }) : t('juego.flaps');
+    for (const b of muescas) b.setAttribute('aria-pressed', String(Math.abs(Number(b.dataset.f) - mandos.flaps) < 0.01));
+    bFrenoMano.setAttribute('aria-pressed', String(Boolean(mandos.frenoMano)));
+    bMapa.setAttribute('aria-pressed', String(verMapa)); raiz.setAttribute('data-mapa', verMapa ? '1' : '0');
+    for (const b of botonesHora) b.setAttribute('aria-pressed', String(b.dataset.hora === hora));
     bTrafico.textContent = t(conTrafico ? 'juego.clase.trafico_si' : 'juego.clase.trafico_no');
     bTrafico.setAttribute('aria-pressed', String(conTrafico));
-    bOrientacion.textContent = '⟲';
-    bOrientacion.setAttribute('aria-label', t(horizontal() ? 'juego.orientacion.vertical' : 'juego.orientacion.horizontal'));
-    bOrientacion.title = bOrientacion.getAttribute('aria-label');
-    bHora.setAttribute('aria-label', t('juego.hora.cambiar', { momento: t(`juego.hora.${hora}`) }));
+    bOrientacion.textContent = t(horizontal() ? 'juego.orientacion.vertical' : 'juego.orientacion.horizontal');
     bSonido.textContent = t(conSonido ? 'juego.sonido.si' : 'juego.sonido.no'); bSonido.setAttribute('aria-pressed', String(conSonido));
     bPausa.setAttribute('aria-pressed', String(pausado));
-    bPausa.replaceChildren(pausado ? el('span', { texto: '▶' }) : icono('pausa', 'icono'));
+    // (el ícono de la pausa se cambia solo si cambió: cambiarlo mientras el dedo está encima hacía perder el toque)
+    if (bPausa.dataset.estado !== String(pausado)) { bPausa.dataset.estado = String(pausado); bPausa.replaceChildren(pausado ? el('span', { texto: '▶' }) : icono('pausa', 'icono')); }
     bPausa.setAttribute('aria-label', t(pausado ? 'juego.seguir_vuelo' : 'juego.pausa'));
+  }
+  // 0.14.118: los flaps de a una muesca, el menú (la hoja), el viento a mano y la compensación.
+  function ponerFlaps(f) { mandos.flaps = Math.max(0, Math.min(1.5, f)); pintarBotones(); }
+  function abrirMenu(si) {
+    menuMas.hidden = !si; bMas.setAttribute('aria-expanded', String(Boolean(si)));
+    raiz.setAttribute('data-menu', si ? '1' : '0');
+    if (si) { pintarBotones(); pintarViento(); bCerrarMenu.focus?.(); } else if (raiz.contains(document.activeElement) || document.activeElement === document.body) bMas.focus?.({ preventScroll: true });
+  }
+  function ponerViento(cambio) {
+    if (cambio == null) vientoManual = null;
+    else {
+      const v = vientoManual ?? { desde: Math.round((ambiente.viento?.desde ?? 360) / 45) * 45 || 360, kt: Math.round((ambiente.viento?.kt ?? 0) / 5) * 5, rafagas: false };
+      vientoManual = { ...v, ...cambio };
+      if (cambio.desde != null && !vientoManual.kt) vientoManual.kt = 10;
+    }
+    if (!vientoManual && tiempoMet === 'despejado') ambiente = { ...ambiente, viento: { desde: 360, kt: 0 } };
+    tiempoPaso(); pintarViento();
+  }
+  function pintarViento() {
+    const v = vientoManual;
+    bVientoAuto.setAttribute('aria-pressed', String(!v));
+    for (const b of botonesVientoDir) b.setAttribute('aria-pressed', String(Boolean(v) && Number(b.dataset.desde) === v.desde));
+    for (const b of botonesVientoKt) b.setAttribute('aria-pressed', String(Boolean(v) && Number(b.dataset.kt) === v.kt));
+    bRafagas.setAttribute('aria-pressed', String(Boolean(v?.rafagas)));
+    const w = ambiente.viento ?? { desde: 360, kt: 0 };
+    const s = w.kt < 1 ? t('juego.viento.calma') : t('juego.viento.ahora', { desde: String(Math.round(w.desde) % 360 || 360).padStart(3, '0'), kt: Math.round(v ? v.kt : w.kt) }) + (v?.rafagas ? ` ${t('juego.viento.con_rafagas', { kt: Math.round(v.kt * 1.6) })}` : '');
+    if (vientoAhora.textContent !== s) vientoAhora.textContent = s;
+    for (const b of botonesTiempo) b.setAttribute('aria-pressed', String(b.dataset.tiempo === tiempoMet));
+  }
+  function moverTrim(dir) {
+    // (▲ = nariz abajo, ▼ = nariz arriba, como la rueda de verdad: hacia atrás sube la nariz)
+    avion = { ...avion, trim: Math.max(-3, Math.min(13, (avion.trim ?? 4) + dir * 0.6)) };
+    pintarTrim();
+  }
+  function pintarTrim() { trimMarca.style.transform = `translateY(${(Math.max(-1, Math.min(1, ((avion.trim ?? 4) - 4) / 7)) * 38).toFixed(1)}px)`; }
+  // El panel de información: el tiempo de vuelo, lo recorrido y el combustible.
+  function pintarInfo() {
+    const mm = Math.floor(tiempo / 60), ss = Math.floor(tiempo % 60);
+    const a = `⏱ ${mm}:${String(ss).padStart(2, '0')}`, b = `${recorridoNm < 10 ? recorridoNm.toFixed(1) : Math.round(recorridoNm)} NM`;
+    if (infoTiempo.textContent !== a) infoTiempo.textContent = a;
+    if (infoDist.textContent !== b) infoDist.textContent = b;
+    const k = Math.max(0, Math.min(1, avion.combustible / VUELO.combustibleGal)), gal = `${Math.round(avion.combustible)} gal`;
+    infoComb.style.setProperty('--k', k.toFixed(3));
+    infoComb.setAttribute('data-bajo', k < 0.2 ? '1' : '0');
+    const gs = infoComb.lastChild; if (gs.textContent !== gal) gs.textContent = gal;
+    pintarTrim();
   }
   function pausar(si) {
     pausado = Boolean(si); pintarBotones();
@@ -1262,8 +1412,16 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (quiere === 'horizontal' && !hecho) mostrarAviso({ tono: 'info', titulo: `⟲ ${t('juego.orientacion.girar')}`, partes: [], corto: true });
     pintarBotones();
   }
+  // 0.14.118: el panel de información: en el teléfono de lado va arriba del panel de la derecha (en la fila de arriba no
+  // cabe junto al consejo y bajaba sobre el parabrisas); si no, a la derecha del consejo.
+  function colocarInfo() {
+    const lado = tactil && horizontal() && typeof matchMedia === 'function' && matchMedia('(max-height: 500px)').matches;
+    const donde = lado ? mandosTactiles.querySelector('.juego-panel-der') : fila2;
+    if (donde && info.parentNode !== donde) { if (lado) donde.prepend(info); else donde.append(info); }
+  }
+  colocarInfo();
   let mqOrientacion = null;
-  try { mqOrientacion = matchMedia('(orientation: landscape)'); mqOrientacion.addEventListener?.('change', () => { pintarBotones(); }); } catch { mqOrientacion = null; }
+  try { mqOrientacion = matchMedia('(orientation: landscape)'); mqOrientacion.addEventListener?.('change', () => { colocarInfo(); pintarBotones(); }); } catch { mqOrientacion = null; }
   function abrirAyuda() { pausar(true); ayuda.hidden = false; ayuda.querySelector('.juego-a-volar')?.focus(); }
   function cerrarAyuda() {
     ayuda.hidden = true; pausar(false);
@@ -1282,17 +1440,28 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // ---- el teclado ----
   const alApretar = e => {
     if (!ayuda.hidden || !resultado.hidden || abierta) { if (e.key === 'Escape' && !ayuda.hidden) cerrarAyuda(); return; }
+    if (!menuMas.hidden) { if (e.key === 'Escape') { e.preventDefault(); abrirMenu(false); } return; }
     if (e.target?.closest?.('.juego-potencia') && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) return;
     if (TECLAS[e.code]) { apretadas.add(e.code); if (e.code.startsWith('Arrow')) e.preventDefault(); if (TECLAS[e.code][0] === 'potencia') setTimeout(pintarPotencia, 0); return; }
-    if (e.code === 'KeyF') { mandos.flaps = mandos.flaps ? 0 : 1; pintarBotones(); }
+    // (0.14.118: F baja los flaps una muesca y R los sube; B, mantenida, frena)
+    if (e.code === 'KeyF') ponerFlaps(e.shiftKey ? anteriorFlaps(mandos.flaps) : siguienteFlaps(mandos.flaps));
+    else if (e.code === 'KeyR') ponerFlaps(anteriorFlaps(mandos.flaps));
+    else if (e.code === 'KeyB') { mandos.freno = 1; bFreno.setAttribute('aria-pressed', 'true'); }
     else if (e.code === 'KeyC') cambiarVista();
     else if (e.code === 'KeyP') pausar(!pausado);
     else if (e.code === 'KeyE') abrirMotor(panelMotor.hidden);
     else if (e.code === 'BracketLeft' || e.code === 'BracketRight') { mezclaTocada = Date.now(); ponerPist({ mezcla: Math.max(0, Math.min(1, Math.round((pist().mezcla + (e.code === 'BracketLeft' ? -0.02 : 0.02)) * 100) / 100)) }); }
     else if (e.key === '?' || e.code === 'KeyH') abrirAyuda();
   };
-  const alSoltar = e => { apretadas.delete(e.code); if (TECLAS[e.code]?.[0] === 'potencia') pintarPotencia(); };
-  const alPerderFoco = () => apretadas.clear();
+  const alSoltar = e => { apretadas.delete(e.code); if (TECLAS[e.code]?.[0] === 'potencia') pintarPotencia(); if (e.code === 'KeyB') soltarFreno(); };
+  const alPerderFoco = () => { apretadas.clear(); soltarFreno(); };
+  // ---- 0.14.118: el freno (mantener apretado) ----
+  function soltarFreno() { mandos.freno = 0; bFreno.setAttribute('aria-pressed', 'false'); }
+  bFreno.addEventListener('pointerdown', e => { mandos.freno = 1; bFreno.setAttribute('aria-pressed', 'true'); try { bFreno.setPointerCapture(e.pointerId); } catch { /* sin captura */ } e.preventDefault(); });
+  for (const tipo of ['pointerup', 'pointercancel', 'lostpointercapture']) bFreno.addEventListener(tipo, soltarFreno);
+  bFreno.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); mandos.freno = 1; bFreno.setAttribute('aria-pressed', 'true'); } });
+  bFreno.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') soltarFreno(); });
+  bFreno.addEventListener('contextmenu', e => e.preventDefault());
   window.addEventListener('keydown', alApretar);
   window.addEventListener('keyup', alSoltar);
   window.addEventListener('blur', alPerderFoco);
@@ -1318,6 +1487,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const soltarYugo = () => { toque.activo = false; toque.alabeo = 0; toque.cabeceo = 0; perilla.style.transform = ''; yugo.removeAttribute('data-activo'); };
   yugo.addEventListener('pointerup', soltarYugo);
   yugo.addEventListener('pointercancel', soltarYugo);
+  yugo.addEventListener('lostpointercapture', () => { if (toque.activo) soltarYugo(); });
   // ---- la palanca de potencia ----
   const ponerPotencia = e => {
     const r = potencia.getBoundingClientRect();
@@ -1329,6 +1499,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   potencia.addEventListener('pointermove', e => { if (enPotencia) ponerPotencia(e); });
   potencia.addEventListener('pointerup', () => { enPotencia = false; });
   potencia.addEventListener('pointercancel', () => { enPotencia = false; });
+  potencia.addEventListener('lostpointercapture', () => { enPotencia = false; });
   potencia.addEventListener('keydown', e => {
     const paso1 = e.code === 'ArrowUp' || e.code === 'PageUp' ? 0.1 : e.code === 'ArrowDown' || e.code === 'PageDown' ? -0.1 : e.code === 'Home' ? -1 : e.code === 'End' ? 1 : 0;
     if (!paso1) return;
@@ -1338,7 +1509,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // El dedo sobre el juego no hace zoom ni mueve la página.
   // (0.14.117: también entre los mandos: un dedo que se resbala del yugo no desplaza ni agranda la página)
   // (la lista de la prueba de motor, que va entre los mandos en el teléfono, sí se desplaza con el dedo)
-  for (const n of [yugo, potencia, escenario, mandosTactiles]) n.addEventListener('touchmove', e => { if (!e.target?.closest?.('.juego-runup')) e.preventDefault(); }, { passive: false });
+  // (0.14.118: también el cajón de los componentes, la mini-clase y los avisos largos: se desplazan con el dedo)
+  for (const n of [yugo, potencia, escenario, mandosTactiles]) n.addEventListener('touchmove', e => { if (!e.target?.closest?.('.juego-runup, .juego-se-desplaza, .juego-motor, .juego-clase-cuerpo, .juego-aviso')) e.preventDefault(); }, { passive: false });
 
   // ---- tema ----
   let temaObs = null;
@@ -1346,7 +1518,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // ---- salir ----
   function destruir() {
-    bucle.destruir(); gl3?.liberar?.(); temaObs?.disconnect(); clearInterval(relojPotencia);
+    bucle.destruir(); gl3?.liberar?.(); temaObs?.disconnect(); clearInterval(relojPotencia); toques.destruir(); sinZoom.destruir();
     sonido.destruir(); document.removeEventListener('visibilitychange', alVisibilidad);
     window.removeEventListener('keydown', alApretar); window.removeEventListener('keyup', alSoltar); window.removeEventListener('blur', alPerderFoco);
     window.removeEventListener('hashchange', alCambiarRuta);
@@ -1356,8 +1528,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const alCambiarRuta = () => destruir();
   window.addEventListener('hashchange', alCambiarRuta);
 
-  pintarBotones(); pintarPotencia();
-  for (const b of botonesTiempo) b.setAttribute('aria-pressed', String(b.dataset.tiempo === tiempoMet));
+  pintarBotones(); pintarPotencia(); pintarViento(); pintarInfo();
+  globalThis.requestAnimationFrame?.(() => medirTecho());
   if (modo === 'libre' || modo === 'preguntas') cargarPreguntas();
   raiz.setAttribute('data-hora', hora);
   if (mc) {
