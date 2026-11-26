@@ -5,11 +5,12 @@ import './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dibujarCabina, geometriaCabina, posicionesAbajo, FLAPS_GRADOS, flapsAGrados } from '../public/clase/cabina.js';
+import { dibujarCabina, dibujarLadoCabina, geometriaCabina, posicionesAbajo, FLAPS_GRADOS, flapsAGrados } from '../public/clase/cabina.js';
 import { crearAvion, pasoVuelo, sustentacion, lecturas, VUELO, alfaNivel } from '../public/clase/vuelo-modelo.js';
 import { TIEMPOS, TIEMPO_FAA, condiciones, nivelTurbulencia, mangaDeViento, nubesDe, MANGA } from '../public/clase/juego-tiempo.js';
 import { contenidoSinZoom, bloquearZoom, activarToques, SELECTOR_TOQUE } from '../public/clase/juego-tactil.js';
-import { siguienteFlaps, anteriorFlaps, vientoConRafagas, VIENTO_RUMBOS, VIENTO_KT, miradaCabina } from '../public/juego-vista.js';
+import { siguienteFlaps, anteriorFlaps, vientoConRafagas, VIENTO_RUMBOS, VIENTO_KT, miradaCabina, ORBITA, orbitaInicial, orbitaCentrada, arrastrarOrbita, zoomOrbita, aplicarOrbita, orbitarOjo, volverOrbita } from '../public/juego-vista.js';
+import { ojoOrbita } from '../public/clase/motor3d.js';
 
 const leer = r => readFileSync(new URL(`../public/${r}`, import.meta.url), 'utf8');
 // Un lienzo de mentira que guarda cada llamada.
@@ -216,4 +217,51 @@ test('el Menú: una hoja opaca sobre todo, que se desplaza, con todas las opcion
     ...VIENTO_RUMBOS.map(r => `juego.viento.${r[1]}`)]) assert.ok(es[k] && en[k], k);
   // En la cabina no se usan marcas ni nombres de fabricantes.
   assert.doesNotMatch(leer('clase/cabina.js'), /cessna|piper|garmin|bendix|king/i);
+});
+
+test('0.14.119: la cámara libre (arrastrar, pellizco, centrar) con sus límites; la cabeza en la cabina', () => {
+  let o = orbitaInicial();
+  assert.ok(orbitaCentrada(o));
+  o = arrastrarOrbita(o, -100, 40);
+  assert.ok(o.giro > 30 && o.alto > 5 && !orbitaCentrada(o), 'arrastrar gira alrededor del avión y lo levanta');
+  // Nunca debajo del suelo ni dando la vuelta por arriba: el ángulo total queda entre −4° y 75°.
+  const bajo = aplicarOrbita({ giro: 0, alto: 9, dist: 0.075 }, arrastrarOrbita(orbitaInicial(), 0, -5000));
+  const alto = aplicarOrbita({ giro: 0, alto: 9, dist: 0.075 }, arrastrarOrbita(orbitaInicial(), 0, 5000));
+  assert.equal(bajo.alto, ORBITA.altoMin); assert.equal(alto.alto, ORBITA.altoMax);
+  // El zoom: con límites, y nunca dentro del avión.
+  assert.equal(zoomOrbita(orbitaInicial(), 100).zoom, ORBITA.zoomMax);
+  assert.equal(zoomOrbita(orbitaInicial(), 0.001).zoom, ORBITA.zoomMin);
+  assert.equal(zoomOrbita(orbitaInicial(), NaN).zoom, 1);
+  assert.ok(aplicarOrbita({ giro: 0, alto: 9, dist: 0.04 }, { ...orbitaInicial(), zoom: ORBITA.zoomMin }).dist >= ORBITA.distMin);
+  // Girar un ojo cualquiera (la repetición) sin cambiar nada con la órbita en el centro; con 180°, del otro lado.
+  const mira = [1, 2, 3], ojo = ojoOrbita({ mira, giro: 30, alto: 10, dist: 0.09 });
+  const igual = orbitarOjo(ojo, mira, orbitaInicial());
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(igual[i] - ojo[i]) < 1e-9);
+  const otro = orbitarOjo(ojo, mira, { ...orbitaInicial(), giro: 180 });
+  assert.ok(Math.abs((otro[0] - mira[0]) + (ojo[0] - mira[0])) < 1e-9 && Math.abs((otro[2] - mira[2]) + (ojo[2] - mira[2])) < 1e-9);
+  // La cabeza: hasta 150° a cada lado, de −35° a 60°; arrastrar afuera no mueve la cabeza y al revés.
+  const c = arrastrarOrbita(orbitaInicial(), 10000, -10000, { cabina: true });
+  assert.equal(c.cabYaw, -ORBITA.cabezaYaw); assert.equal(c.cabPitch, ORBITA.cabezaPitchMin); assert.equal(c.giro, 0);
+  // Vuelve sola (si se eligió): suave; con «menos movimiento», de una vez.
+  const v = volverOrbita({ giro: 90, alto: 20, zoom: 2, cabYaw: 40, cabPitch: 10 }, 0.1);
+  assert.ok(v.giro < 90 && v.giro > 0 && v.zoom < 2 && v.zoom > 1);
+  assert.ok(orbitaCentrada(volverOrbita({ giro: 90, alto: 20, zoom: 2, cabYaw: 40, cabPitch: 10 }, 0.016, { reducir: true })));
+  // Con la cabeza girada se dibuja el costado (la ventana con el ala y el montante), sin NaN.
+  const { ctx, numeros } = contexto();
+  for (const lado of [-1, 0, 1]) dibujarLadoCabina(ctx, 1000, 600, { escala: 1, lado, hora: 'noche', techo: 80 });
+  assert.ok(numeros().every(Number.isFinite));
+});
+
+test('0.14.119: la escena ocupa toda la pantalla en el teléfono y los mandos flotan encima (la cabina deja libres sus relojes)', () => {
+  const css = leer('juego.css'), vista = leer('juego-vista.js');
+  assert.match(css, /\.juego-vuelo\[data-tactil="1"\] \.juego-escenario \{ position: absolute; inset: 0; \}/);
+  assert.match(css, /\.juego-vuelo\[data-tactil="1"\] \.juego-mandos \{ position: absolute; inset: 0;[^}]*background: none; pointer-events: none; \}/);
+  assert.match(css, /\.juego-panel > \* \{ pointer-events: auto; \}/);
+  // Lo que tapan los mandos se mide y la cabina pone los relojes en lo libre.
+  assert.match(vista, /function medirReserva/);
+  const sin = geometriaCabina(1350, 624, { escala: 1.6 }), con = geometriaCabina(1350, 624, { escala: 1.6, reserva: { izq: 260, der: 300, abajo: 0 } });
+  assert.ok(con.xs[0] - con.r * 1.2 > 260 && con.xm + con.r * 1.2 < 1350 - 300, 'los relojes, entre los mandos');
+  const pie = geometriaCabina(624, 1350, { escala: 1.6, reserva: { abajo: 400 } });
+  assert.ok(pie.tira + pie.alto1 / 2 <= 1350 - 400 + 1, 'de pie: el tablero termina encima de los mandos');
+  assert.ok(sin.ancha !== undefined);
 });

@@ -64,31 +64,35 @@ export function datosPanel(d = {}) {
 // techo: hasta dónde baja el techo tapizado (px; allí van los botones y el consejo, nunca sobre el parabrisas).
 // → { panel (alto del tablero), yp (dónde empieza), techo, ancha (PC: con radios y ventanas laterales), r (radio de un reloj),
 //     xs (las tres columnas de los seis básicos), fila1, fila2, xm (la columna del motor), tira (la fila de abajo), alto1 }
-export function geometriaCabina(ancho, alto, { escala = 1, techo = 0 } = {}) {
-  const panel = Math.max(alto * (ancho > alto * 1.3 ? 0.5 : 0.46), 170 * escala), yp = alto - panel;
-  const ancha = ancho >= alto * 1.3 && ancho > 700 * escala;
-  const r = Math.min((ancho / 4.6) * 0.42, panel * 0.165, 92 * escala), ancho1 = r * 2.42;
+// reserva { izq, der, abajo } (px): lo que tapan los mandos que flotan encima (0.14.119, el teléfono): los relojes van en lo
+// que queda libre; el tablero, el marco y las ventanas siguen ocupando toda la pantalla (detrás de los mandos).
+export function geometriaCabina(ancho, alto, { escala = 1, techo = 0, reserva = null } = {}) {
+  const izq = lim(num(reserva?.izq), 0, ancho * 0.45), der = lim(num(reserva?.der), 0, ancho * 0.45), abajo = lim(num(reserva?.abajo), 0, alto * 0.45);
+  const W = ancho - izq - der, H = alto - abajo;
+  const panel = Math.max(H * (W > H * 1.3 ? 0.5 : 0.46), 170 * escala), yp = H - panel;
+  const ancha = W >= H * 1.3 && W > 700 * escala;
+  const r = Math.min((W / 4.6) * 0.42, panel * 0.165, 92 * escala), ancho1 = r * 2.42;
   const fila1 = yp + panel * 0.22, fila2 = yp + panel * 0.57, tira = yp + panel * 0.85, alto1 = panel * 0.17;
-  const x0 = ancha ? ancho * 0.36 : ancho * 0.5 - ancho1 * 0.55;
+  const x0 = izq + (ancha ? W * 0.36 : W * 0.5 - ancho1 * 0.55);
   const xs = [x0 - ancho1, x0, x0 + ancho1];
   const xm = xs[2] + ancho1 * (ancha ? 1.02 : 1.1);
   const techoPx = lim(Math.max(num(techo), alto * 0.05), 0, Math.max(0, yp - alto * 0.12));
-  return { panel, yp, techo: techoPx, ancha, r, ancho1, xs, fila1, fila2, xm, tira, alto1, ancho, alto };
+  return { panel, yp, techo: techoPx, ancha, r, ancho1, xs, fila1, fila2, xm, tira, alto1, ancho, alto, izq, der, abajo, anchoUtil: W };
 }
 
 // La cabina. datos: kt, ft, rumbo, alabeo, cabeceo, vs (o subida), tasaGiro, rpm, aceitePsi, aceiteTemp, combustible, aviso.
 // opciones: escala (px por px CSS), textos, completo (el Juego: dos filas, motor y yugo), yugo { alabeo, cabeceo } (-1..1),
 // noche (la luz de los instrumentos) u hora ('dia' | 'atardecer' | 'noche'), techo (px), crearLienzo (w, h) → lienzo
 // (para guardar lo que no se mueve), extras (lo del Juego). → el alto (px) que tapa el tablero.
-export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}, completo = false, yugo = null, noche = false, hora = null, extras = null, techo = 0, crearLienzo = null } = {}) {
+export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}, completo = false, yugo = null, noche = false, hora = null, extras = null, techo = 0, reserva = null, crearLienzo = null } = {}) {
   const D = datosPanel(datos), luz = hora === 'noche' || hora === 'atardecer' || hora === 'dia' ? hora : noche ? 'noche' : 'dia';
   const C = colores(luz), T = k => textos[k] ?? TEXTOS_CABINA[k];
   if (!completo) return cabinaSimple(ctx, ancho, alto, D, C, escala, T);
-  const G = geometriaCabina(ancho, alto, { escala, techo });
+  const G = geometriaCabina(ancho, alto, { escala, techo, reserva });
   const ex = extras ?? {};
   const conEgt = ex.egt != null;
   // Lo fijo: en un lienzo guardado (si se puede) o directo.
-  const clave = `${ancho}x${alto}|${escala}|${luz}|${Math.round(G.techo)}|${conEgt ? 1 : 0}|${T('kt')}|${T('rpm')}`;
+  const clave = `${ancho}x${alto}|${escala}|${luz}|${Math.round(G.techo)}|${Math.round(G.izq)},${Math.round(G.der)},${Math.round(G.abajo)}|${conEgt ? 1 : 0}|${T('kt')}|${T('rpm')}`;
   const capas = crearLienzo ? capasFijas(crearLienzo, clave, ancho, alto, G, C, escala, T, conEgt) : null;
   if (capas) ctx.drawImage(capas.fondo, 0, 0);
   else fondoFijo(ctx, ancho, alto, G, C, escala, T, conEgt);
@@ -104,7 +108,40 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
     texto(ctx, `G ${g.toFixed(1)}`, G.xs[0] - G.r + 31 * escala, G.yp - 16 * escala, 13 * escala, g > 2.5 || g < 0 ? '#ff8278' : '#ffffff', 800);
   }
   if (D.aviso) luzPerdida(ctx, ancho, G.yp, escala, T);
-  return G.panel;
+  return alto - G.yp; // (lo que tapa el tablero, con lo de abajo)
+}
+
+// 0.14.119: con la cabeza girada (la cámara libre), lo que hay al costado: la puerta con su ventana, el ala vista desde
+// abajo y el montante que baja hacia el fuselaje, el techo que sigue y el parante de atrás. Se dibuja a la izquierda (lado
+// −1: de x = −ancho·1.2 a 0) o a la derecha (lado 1: de ancho a ancho·2.2), en las mismas coordenadas de la cabina.
+export function dibujarLadoCabina(ctx, ancho, alto, { escala = 1, hora = 'dia', techo = 0, reserva = null, lado = -1 } = {}) {
+  const C = colores(hora === 'noche' || hora === 'atardecer' ? hora : 'dia'), G = geometriaCabina(ancho, alto, { escala, techo, reserva });
+  const W = ancho * 1.2, X = f => (lado < 0 ? -f * W : ancho + f * W), y0 = G.techo, sill = G.yp + 6 * escala;
+  const noche = C.luz === 'noche';
+  // Arriba y abajo de lo dibujado (al mirar arriba o abajo): más techo y más tablero.
+  ctx.fillStyle = C.techo[1]; ctx.fillRect(-W * 2, -alto, ancho + W * 4, alto);
+  ctx.fillStyle = C.bajo; ctx.fillRect(-W * 2, alto, ancho + W * 4, alto);
+  if (!lado) return;
+  // El techo que sigue.
+  const gt = ctx.createLinearGradient(0, 0, 0, y0);
+  gt.addColorStop(0, C.techo[1]); gt.addColorStop(1, C.techo[0]);
+  ctx.fillStyle = gt; ctx.fillRect(Math.min(X(0), X(1)), -alto, W, alto + y0 + 4 * escala);
+  // El ala desde abajo (arriba de la ventana: se ve casi toda) y su borde de ataque.
+  const ga = ctx.createLinearGradient(0, y0, 0, y0 + alto * 0.2);
+  ga.addColorStop(0, noche ? '#0c0d0f' : '#bfc4cb'); ga.addColorStop(1, noche ? '#16171a' : '#eceef1');
+  ctx.fillStyle = ga;
+  ctx.beginPath(); ctx.moveTo(X(0.02), y0); ctx.lineTo(X(1), y0); ctx.lineTo(X(1), y0 + alto * 0.06); ctx.lineTo(X(0.02), y0 + alto * 0.2); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 2 * escala; ctx.beginPath(); ctx.moveTo(X(1), y0 + alto * 0.06); ctx.lineTo(X(0.02), y0 + alto * 0.2); ctx.stroke();
+  // El montante: desde abajo, junto a la puerta, sube hacia afuera hasta el ala.
+  const gm = ctx.createLinearGradient(X(0.2), 0, X(0.3), 0);
+  gm.addColorStop(0, noche ? '#111214' : '#a3a8b0'); gm.addColorStop(1, noche ? '#1b1c1f' : '#e4e7eb');
+  ctx.fillStyle = gm;
+  ctx.beginPath(); ctx.moveTo(X(0.3), sill); ctx.lineTo(X(0.36), sill); ctx.lineTo(X(0.86), y0 + alto * 0.09); ctx.lineTo(X(0.8), y0 + alto * 0.09); ctx.closePath(); ctx.fill();
+  // El marco de la ventana (abajo la puerta, a los lados los parantes) y la puerta con su apoyabrazos.
+  ctx.fillStyle = C.marco; ctx.fillRect(Math.min(X(0), X(0.03)), y0, W * 0.03, alto); ctx.fillRect(Math.min(X(0.97), X(1)), y0, W * 0.03, alto);
+  ctx.fillStyle = C.puerta; ctx.fillRect(Math.min(X(0), X(1)), sill, W, alto - sill);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(Math.min(X(0.1), X(0.7)), sill + (alto - sill) * 0.35, W * 0.6, Math.max(6, (alto - sill) * 0.08));
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(Math.min(X(0), X(1)), sill, W, 2 * escala);
 }
 
 export const TEXTOS_CABINA = { egt: 'EGT', ff: 'FF', trim: 'TRIM', flaps: 'FLAPS', gases: 'THROTTLE', combustible: 'FUEL SEL', kt: 'KNOTS', ft: 'ALT', vsi: 'VERT SPEED', rpm: 'RPM ×100', psi: 'OIL P', temp: 'OIL T', fuel: 'FUEL', giro: 'TURN COORD', min: '2 MIN', stall: 'STALL', arriba: 'UP', abajo: 'DN', mezcla: 'MIXTURE', calor: 'CARB HEAT' };
@@ -474,7 +511,7 @@ function mandosVivos(ctx, G, C, e, T, ex, yugo) {
   ruedaTrim(ctx, P.trim, P.trimY, alto1, num(ex.trim, 0), C, e);
   // Los yugos: el del piloto bajo los seis básicos; en la PC, también el del copiloto (se mueven juntos).
   if (yugo) {
-    const w = Math.min(G.ancho * 0.36, G.panel * 1.05, r * 3.4);
+    const w = Math.min(G.anchoUtil * 0.36, G.panel * 1.05, r * 3.4);
     dibujarYugo(ctx, G, G.xs[1], w, yugo, e, C);
     if (G.ancha) dibujarYugo(ctx, G, G.ancho * 0.9, w * 0.92, yugo, e, C);
   }

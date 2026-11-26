@@ -716,6 +716,20 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.119: el paisaje en toda la pantalla y la cámara libre — sin cambio de base
+
+- **En el teléfono la escena ocupa toda la pantalla** (el dueño: «no se ve el fondo… ahí deja ver el fondo»): los mandos ya no
+  van en columnas ni franjas negras; cada grupo (potencia, flaps, frenos, atajos, el yugo con la compensación) flota encima,
+  firme y con sombra, pegado al borde. La información y los datos del vuelo, en vidrio oscuro. Lo que tapan los mandos se mide
+  (`medirReserva`) y la cabina pone sus relojes en lo que queda libre (`geometriaCabina({ reserva })`); el cajón de los
+  componentes y los datos se acomodan entre los mandos.
+- **La cámara libre** (`ORBITA`, `arrastrarOrbita`, `zoomOrbita`, `aplicarOrbita`, `orbitarOjo`, `volverOrbita`): afuera,
+  arrastrar el paisaje gira alrededor del avión y el pellizco (o la rueda) acerca y aleja, con límites (nunca bajo el suelo ni
+  dentro del avión); en la cabina, arrastrar gira la cabeza (a los costados se ve la puerta, el ala y el montante:
+  `dibujarLadoCabina`). «Centrar» o el doble toque vuelven; en el Menú, «La cámara vuelve sola» (apagado al empezar). También en
+  la repetición. El yugo y los botones siguen andando mientras tanto; la página no se agranda.
+- Pruebas: `test/juego-cabina.test.js`.
+
 ### Lo nuevo de la 0.14.118: la cabina por dentro, los botones «de verdad», el tiempo a mano y sin zoom — sin cambio de base
 
 - **La cabina** (`clase/cabina.js`, dibujada a mano: sin modelos ni imágenes de afuera, sin marcas): la de un entrenador de ala

@@ -7,7 +7,7 @@ import { crearBucle, prefiereMenosMovimiento } from './clase/comun.js';
 import { crearCamara, ojoOrbita, baseAvion, suma, por, render, crearTexturas, mezclarAngulo, proyectar } from './clase/motor3d.js';
 import { crearRenderGL } from './clase/motor3d-gl.js';
 import { PALETAS } from './clase/e3d-base.js';
-import { dibujarCabina, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
+import { dibujarCabina, dibujarLadoCabina, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
 import { activarToques, bloquearZoom } from './clase/juego-tactil.js';
 import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua } from './clase/vuelo-modelo.js';
 import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz } from './clase/juego-mundo.js';
@@ -118,6 +118,39 @@ export function miradaCabina(fov, tablero, techo = 0) {
   const y = techo + 0.6 * (1 - tablero - techo); // dónde queda el horizonte (desde arriba, en fracción del alto)
   return (Math.atan((0.5 - y) * 2 * Math.tan((fov * Math.PI) / 360)) * 180) / Math.PI;
 }
+// 0.14.119 (el dueño: «que me deje mover la cámara fuera del avión… así puedo ver todo el avión cuando quiera»): la
+// cámara libre. Afuera, arrastrar gira alrededor del avión (giro y altura que se suman a la de persecución) y el pellizco o
+// la rueda acercan o alejan (zoom: un factor de la distancia); en la cabina, arrastrar gira la cabeza. Con límites: nunca
+// debajo del suelo (además del control del suelo en camara()), nunca dentro del avión, la cabeza hasta donde gira una persona.
+export const ORBITA = Object.freeze({ gradosPorPx: 0.35, altoPorPx: 0.25, altoMin: -4, altoMax: 75, zoomMin: 0.45, zoomMax: 3.5, distMin: 0.03,
+  cabezaYaw: 150, cabezaPitchMin: -35, cabezaPitchMax: 60, cabezaPorPx: 0.25, vuelveS: 4, vuelveTau: 0.6 });
+export const orbitaInicial = () => ({ giro: 0, alto: 0, zoom: 1, cabYaw: 0, cabPitch: 0 });
+export const orbitaCentrada = o => Math.abs(o.giro) < 0.5 && Math.abs(o.alto) < 0.5 && Math.abs(o.zoom - 1) < 0.01 && Math.abs(o.cabYaw) < 0.5 && Math.abs(o.cabPitch) < 0.5;
+const limO = (x, a, b) => Math.min(b, Math.max(a, x));
+const n180o = g => ((((g % 360) + 540) % 360) - 180);
+// Un arrastre (px) → la órbita nueva. cabina: gira la cabeza en lugar de la cámara de afuera.
+export function arrastrarOrbita(o, dx, dy, { cabina = false } = {}) {
+  if (cabina) return { ...o, cabYaw: limO(o.cabYaw - dx * ORBITA.cabezaPorPx, -ORBITA.cabezaYaw, ORBITA.cabezaYaw), cabPitch: limO(o.cabPitch + dy * ORBITA.cabezaPorPx, ORBITA.cabezaPitchMin, ORBITA.cabezaPitchMax) };
+  return { ...o, giro: n180o(o.giro - dx * ORBITA.gradosPorPx), alto: limO(o.alto + dy * ORBITA.altoPorPx, -90, 90) };
+}
+export const zoomOrbita = (o, factor) => ({ ...o, zoom: limO(o.zoom * (Number.isFinite(factor) && factor > 0 ? factor : 1), ORBITA.zoomMin, ORBITA.zoomMax) });
+// La cámara de persecución { giro, alto, dist } con la órbita encima (y sus límites).
+export function aplicarOrbita(base, o) {
+  return { giro: base.giro + o.giro, alto: limO(base.alto + o.alto, ORBITA.altoMin, ORBITA.altoMax), dist: Math.max(ORBITA.distMin, base.dist * o.zoom) };
+}
+// Una cámara cualquiera (de la repetición) que mira a «mira»: su ojo, girado alrededor de «mira» con la órbita.
+export function orbitarOjo(ojo, mira, o) {
+  const v = [ojo[0] - mira[0], ojo[1] - mira[1], ojo[2] - mira[2]], d = Math.hypot(...v) || ORBITA.distMin;
+  const alto = (Math.asin(limO(v[1] / d, -1, 1)) * 180) / Math.PI, giro = (Math.atan2(-v[0], -v[2]) * 180) / Math.PI;
+  const r = aplicarOrbita({ giro, alto, dist: d }, o), g = (r.giro * Math.PI) / 180, a = (r.alto * Math.PI) / 180;
+  return [mira[0] - Math.sin(g) * Math.cos(a) * r.dist, mira[1] + Math.sin(a) * r.dist, mira[2] - Math.cos(g) * Math.cos(a) * r.dist];
+}
+// Vuelve sola al centro (si se eligió en «Menú»): después de unos segundos sin tocar, suave (o de una vez, con menos movimiento).
+export function volverOrbita(o, dt, { reducir = false } = {}) {
+  const k = reducir ? 1 : 1 - Math.exp(-Math.max(0, dt) / ORBITA.vuelveTau);
+  return { giro: o.giro * (1 - k), alto: o.alto * (1 - k), zoom: 1 + (o.zoom - 1) * (1 - k), cabYaw: o.cabYaw * (1 - k), cabPitch: o.cabPitch * (1 - k) };
+}
+
 // 0.14.118: el viento a mano (en «Menú»): de dónde (8 rumbos) y cuánto; y los flaps de a una muesca (UP → 10 → 20 → 30 → UP).
 export const VIENTO_RUMBOS = Object.freeze([[360, 'n'], [45, 'ne'], [90, 'e'], [135, 'se'], [180, 's'], [225, 'so'], [270, 'o'], [315, 'no']]);
 export const VIENTO_KT = Object.freeze([0, 5, 10, 15, 20, 25]);
@@ -217,6 +250,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // La cámara («Cabina 1/2») arriba a la izquierda; arriba a la derecha, la pausa y «Menú» (la hora, el tráfico, el sonido,
   // el tiempo y el viento, en una hoja que se desplaza y se cierra).
   const bVista = boton('juego-vista juego-camara', '', () => cambiarVista());
+  // 0.14.119: «Centrar» (aparece con la cámara girada) y, en el Menú, que la cámara vuelva sola (apagado al empezar).
+  const bCentrar = boton('juego-centrar', t('juego.camara.centrar'), () => centrarCamara());
+  const bVuelve = boton('juego-vuelve juego-luz', t('juego.camara.vuelve'), () => { orbitaVuelve = !orbitaVuelve; pintarBotones(); }, { 'aria-pressed': 'false' });
   const bAsistente = boton('juego-asistente juego-luz', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
   const bFlaps = boton('juego-flaps', t('juego.flaps'), () => ponerFlaps(siguienteFlaps(mandos.flaps)), { 'aria-pressed': 'false' });
   const bPausa = boton('juego-pausa', '', () => pausar(!pausado), { 'aria-pressed': 'false', 'aria-label': t('juego.pausa') });
@@ -244,7 +280,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     el('section', { class: 'juego-hoja', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'juego-hoja-titulo' },
       el('div', { class: 'juego-hoja-cabeza' }, el('h2', { id: 'juego-hoja-titulo', texto: t('juego.mas') }), bCerrarMenu),
       el('div', { class: 'juego-hoja-cuerpo juego-se-desplaza' },
-        el('div', { class: 'juego-hoja-fila' }, bAyuda2, tactil ? bOrientacion : null, bTrafico, bSonido),
+        el('div', { class: 'juego-hoja-fila' }, bAyuda2, tactil ? bOrientacion : null, bTrafico, bSonido, bVuelve),
         tituloHoja('juego.menu.hora'), el('div', { class: 'juego-hoja-fila' }, botonesHora),
         tituloHoja('juego.tiempo'), el('div', { class: 'juego-hoja-fila' }, botonesTiempo),
         tituloHoja('juego.viento'), vientoAhora,
@@ -254,7 +290,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // 0.14.103: el motor: master, magnetos, selector de combustible, mezcla, sus relojes y la lista del arranque o el apagado.
   // 0.14.118: «Componentes ⇧»: la pestaña abajo al centro abre el cajón (los interruptores con su luz).
   const bMotor = boton('juego-motor-boton juego-componentes', [icono('motor', 'icono'), el('span', { class: 'juego-motor-boton-texto', texto: t('juego.componentes') }), el('span', { class: 'juego-flecha', 'aria-hidden': 'true', texto: '⇧' })], () => abrirMotor(panelMotor.hidden), { 'aria-expanded': 'false', 'aria-label': t('juego.componentes') });
-  const barra = el('div', { class: 'juego-barra' }, el('div', { class: 'juego-barra-izq' }, salir, bVista, marcador),
+  const barra = el('div', { class: 'juego-barra' }, el('div', { class: 'juego-barra-izq' }, salir, bVista, bCentrar, marcador),
     el('div', { class: 'juego-barra-botones' }, bFlaps, bAsistente, bPausa, bMas, bAyuda));
   // La oferta («¿la tomas?») y el aviso (la respuesta, la falla, la radio): abajo de la escena, sin tapar la cabina entera.
   const oferta = el('section', { class: 'juego-oferta', hidden: true, role: 'alertdialog', 'aria-labelledby': 'juego-oferta-titulo' });
@@ -321,7 +357,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
         el('figure', { class: 'juego-mini' }, el('span', { class: 'juego-mini-potencia' }, el('span', { class: 'juego-mini-manija' })), el('figcaption', { texto: t('juego.ayuda.mini_potencia') })),
         el('figure', { class: 'juego-mini' }, el('span', { class: 'juego-mini-yugo' }, el('span', { class: 'juego-mini-perilla' })), el('figcaption', { texto: t('juego.ayuda.mini_yugo') }))) : null,
       el('ul', { class: 'juego-teclas' },
-        (tactil ? ['yugo', 'tirar', 'potencia_tactil', 'flaps_tactil', 'freno_tactil', 'vista_tactil'] : ['flechas', 'tirar_teclas', 'potencia_teclas', 'flaps_teclas', 'freno_teclas', 'vista_teclas', 'pausa_teclas'])
+        (tactil ? ['yugo', 'tirar', 'potencia_tactil', 'flaps_tactil', 'freno_tactil', 'vista_tactil', 'camara_tactil'] : ['flechas', 'tirar_teclas', 'potencia_teclas', 'flaps_teclas', 'freno_teclas', 'vista_teclas', 'camara_teclas', 'pausa_teclas'])
           .map(k => { const [tecla, que] = t(`juego.ayuda.${k}`).split(' — '); return el('li', {}, el('kbd', { texto: tecla }), el('span', { texto: que ?? '' })); })),
       el('p', { class: 'juego-nota', texto: t('juego.ayuda.asistente') }),
       el('p', { class: 'juego-nota', texto: t('juego.ayuda.aterrizar') }),
@@ -358,6 +394,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // 0.14.118: el viento elegido a mano (null: el del tiempo), el mapa a la vista (en el teléfono se abre con «Mapa»), la
   // turbulencia de ahora (0..1) y lo recorrido.
   let vientoManual = null, verMapa = !tactil, turbLeve = 0, recorridoNm = 0;
+  // 0.14.119: la cámara libre (afuera, alrededor del avión; en la cabina, la cabeza) y si vuelve sola al centro.
+  let orbita = orbitaInicial(), orbitaTocada = -1e9, orbitaVuelve = false;
   // (0.14.117: el yugo táctil: donde tocó primero es el centro; cabeceo/alabeo, lo que pide el dedo; suave, lo que llega)
   const toque = { activo: false, cabeceo: 0, alabeo: 0, x0: 0, y0: 0, suave: { cabeceo: 0, alabeo: 0 } };
   const apretadas = new Set();
@@ -409,7 +447,31 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       b = Math.max(b, r.bottom - base, n.classList.contains('juego-fila2') ? r.top - base + FILA2_RESERVA : 0);
     }
     techoMedido = Math.round(b + 6);
+    medirReserva(base);
   }
+  // 0.14.119: lo que tapan los mandos que flotan sobre la escena (en el teléfono): de lado, los dos costados; de pie, abajo.
+  // La cabina acomoda sus relojes en lo que queda libre (el tablero sigue detrás de los mandos) y los paneles de vidrio
+  // (datos, «Componentes») se ponen por encima.
+  let reserva = { izq: 0, der: 0, abajo: 0 };
+  function medirReserva(base0) {
+    let r = { izq: 0, der: 0, abajo: 0 };
+    if (tactil) {
+      const e = escenario.getBoundingClientRect();
+      const cajas = [...mandosTactiles.querySelectorAll(':scope > .juego-panel, :scope > .juego-runup')].filter(n => n.getClientRects().length).map(n => n.getBoundingClientRect()).filter(q => q.width > 0 && q.height > 0);
+      const lado = horizontal() && e.height <= 500;
+      for (const q of cajas) {
+        if (lado) { if (q.left - e.left < e.width / 2) r.izq = Math.max(r.izq, q.right - e.left + 4); else r.der = Math.max(r.der, e.right - q.left + 4); }
+        else r.abajo = Math.max(r.abajo, e.bottom - q.top + 4);
+      }
+      r = { izq: Math.round(r.izq), der: Math.round(r.der), abajo: Math.round(r.abajo) };
+    }
+    void base0;
+    if (r.izq !== reserva.izq || r.der !== reserva.der || r.abajo !== reserva.abajo) {
+      reserva = r;
+      raiz.style.setProperty('--reserva-abajo', `${r.abajo}px`); raiz.style.setProperty('--reserva-izq', `${r.izq}px`); raiz.style.setProperty('--reserva-der', `${r.der}px`);
+    }
+  }
+  const reservaPx = () => ({ izq: reserva.izq * escalaPx, der: reserva.der * escalaPx, abajo: reserva.abajo * escalaPx });
   function medir() {
     const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, tactil ? 1.6 : 2) * calidad;
     const w = lienzo.clientWidth || 640, hh = lienzo.clientHeight || 400;
@@ -424,8 +486,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       // (en las mini-clases para mirar, una vista acercada: la pista, el PAPI y las luces de lejos se distinguen)
       // (en las mini-clases, mc.fov es el campo horizontal: de pie, el vertical se agranda para mirar lo mismo)
       const fov = mc?.fov ? (ancho < alto ? (2 * Math.atan(Math.tan((mc.fov * Math.PI) / 360) * (alto / ancho)) * 180) / Math.PI : mc.fov) : (ancho < alto ? 74 : 56);
-      const geo = geometriaCabina(ancho, alto, { escala: escalaPx, techo: techoUI() });
-      const tablero = Math.min(0.62, geo.panel / Math.max(1, alto)), techoF = geo.techo / Math.max(1, alto);
+      const geo = geometriaCabina(ancho, alto, { escala: escalaPx, techo: techoUI(), reserva: reservaPx() });
+      const tablero = Math.min(0.8, (alto - geo.yp) / Math.max(1, alto)), techoF = geo.techo / Math.max(1, alto);
       const b = baseAvion(avion.rumbo, avion.cabeceo - (mc?.fov ? 7 * (fov / 74) : miradaCabina(fov, tablero, techoF)), avion.alabeo);
       // La cabeza se mueve con los g (baja al tirar) y con la turbulencia (suave, sin marear).
       // (0.14.118: la turbulencia de siempre también sacude, suave; en la carrera, el traqueteo de las ruedas)
@@ -435,12 +497,16 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       const metaX = reducir ? 0 : turb * Math.sin(tiempo * 6.3 + 1) * 0.00012;
       cabeza = { y: cabeza.y + (metaY - cabeza.y) * 0.15, x: cabeza.x + (metaX - cabeza.x) * 0.15 };
       const ojo = suma(suma(suma(pos, por(b.U, 0.0017 + cabeza.y)), por(b.F, 0.0016)), por(b.R, cabeza.x));
-      return crearCamara({ ojo, mira: suma(ojo, b.F), arriba: b.U, fov, cerca: 0.0006 });
+      // (0.14.119: la cabeza girada con la cámara libre: a un lado se ve la ventana del costado)
+      const yw = (orbita.cabYaw * Math.PI) / 180, pt = (orbita.cabPitch * Math.PI) / 180;
+      const dir = suma(suma(por(b.F, Math.cos(yw) * Math.cos(pt)), por(b.R, Math.sin(yw) * Math.cos(pt))), por(b.U, Math.sin(pt)));
+      return crearCamara({ ojo, mira: suma(ojo, dir), arriba: b.U, fov, cerca: 0.0006 });
     }
     camAfuera = seguirCamara(camAfuera, avion, dtCuadro, { reducir });
-    const ojo = ojoOrbita({ mira: pos, giro: camAfuera.giro, alto: camAfuera.alto, dist: CAMARA_AFUERA.dist });
+    const o = aplicarOrbita({ giro: camAfuera.giro, alto: camAfuera.alto, dist: CAMARA_AFUERA.dist }, orbita), libre = !orbitaCentrada(orbita);
+    const ojo = ojoOrbita({ mira: pos, ...o });
     if (ojo[1] < alturaSuelo(ojo[0], ojo[2]) + 0.003) ojo[1] = alturaSuelo(ojo[0], ojo[2]) + 0.003;
-    return crearCamara({ ojo, mira: pos, arriba: arribaInclinado(camAfuera.giro, camAfuera.alabeo), fov: ancho < alto ? 62 : 50, cerca: 0.002 });
+    return crearCamara({ ojo, mira: pos, arriba: arribaInclinado(o.giro, libre ? 0 : camAfuera.alabeo), fov: ancho < alto ? 62 : 50, cerca: 0.002 });
   }
   // 0.14.103: el cielo gris (con nubes, frentes o dentro de la capa).
   const mezclar = (a, b, k) => a.map((v, i) => Math.round(v + ((b[i] ?? v) - v) * Math.max(0, Math.min(1, k))));
@@ -478,7 +544,13 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     const tr = Math.min(tiempoRepe(), repe.dur), { propio: p } = estadoRepeticion(repe, tr);
     const real = avion, vistaReal = vista, indicadoReal = indicado;
     avion = { ...real, x: p.x, z: p.z, ft: p.y * 1000, rumbo: p.rumbo, alabeo: p.alabeo, cabeceo: p.cabeceo, rpm: p.rpm, enSuelo: p.enSuelo, vs: 0, aviso: false, g: 1 };
-    const cr = camaraRepeticion(repe, tr, ancho / Math.max(1, alto));
+    let cr = camaraRepeticion(repe, tr, ancho / Math.max(1, alto));
+    // (0.14.119: la cámara libre también en la repetición: gira alrededor del avión propio)
+    if (cr.toma !== 'cabina' && cr.toma !== 'arriba' && !orbitaCentrada(orbita)) {
+      const mira = [p.x, p.y + 0.0027, p.z], ojo = orbitarOjo(cr.cam.ojo, mira, orbita);
+      if (ojo[1] < alturaSuelo(ojo[0], ojo[2]) + 0.003) ojo[1] = alturaSuelo(ojo[0], ojo[2]) + 0.003;
+      cr = { ...cr, cam: crearCamara({ ojo, mira, fov: cr.cam.fov, cerca: cr.cam.cerca }) };
+    }
     vista = cr.toma === 'cabina' ? 'cabina' : 'afuera'; indicado = null;
     try { dibujarMundo({ t: tr, ...cr }); } finally { avion = real; vista = vistaReal; indicado = indicadoReal; }
     if (!ctx) return;
@@ -515,9 +587,14 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       const vib = reducir ? 0 : ((avion.rpm ?? 0) / 2700) * 0.5 * escalaPx + (tiempo < rafagaHasta ? 1.5 * escalaPx : Math.min(1, turbLeve * 2) * 0.8 * escalaPx) + (avion.aviso ? 1.2 * escalaPx : 0) + (avion.enSuelo && avion.kt > 3 ? Math.min(1, avion.kt / 50) * 0.7 * escalaPx : 0);
       ctx.save();
       if (vib) ctx.translate(Math.sin(tiempo * 83) * vib, Math.cos(tiempo * 71) * vib);
+      // (0.14.119: con la cabeza girada, la cabina dibujada se corre al otro lado: el tablero sale de la vista)
+      if (!r && (orbita.cabYaw || orbita.cabPitch)) {
+        const k = alto / (ancho < alto ? 74 : 56); ctx.translate(-orbita.cabYaw * k, orbita.cabPitch * k);
+        dibujarLadoCabina(ctx, ancho, alto, { escala: escalaPx, hora, techo: techoUI(), reserva: reservaPx(), lado: Math.abs(orbita.cabYaw) > 3 ? Math.sign(orbita.cabYaw) : 0 });
+      }
       efectosVentana(ctx);
       const pm = avion.pist;
-      techo = alto - dibujarCabina(ctx, ancho, alto, L, { escala: escalaPx, completo: true, yugo: mandosAhora(), textos: TEXTOS_PANEL(t), hora, techo: techoUI(), crearLienzo,
+      techo = alto - dibujarCabina(ctx, ancho, alto, L, { escala: escalaPx, completo: true, yugo: mandosAhora(), textos: TEXTOS_PANEL(t), hora, techo: techoUI(), reserva: reservaPx(), crearLienzo,
         extras: { trim: Math.max(-1, Math.min(1, ((avion.trim ?? 4) - 4) / 7)), flaps: avion.flapsPos ?? avion.flaps, flapsMando: mandos.flaps, potencia: mandos.potencia, g: avion.enSuelo ? null : avion.g,
           egt: pm ? pm.egt ?? 100 : null, ff: pm?.flujoGph ?? 0, ajuste, mezcla: pm?.mezcla ?? 1, calor: Boolean(pm?.calor), magnetos: pm?.magnetos ?? 'BOTH', master: pm ? Boolean(pm.master) : true, luces: lucesDe(avion) } });
       ctx.restore();
@@ -687,6 +764,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   }
   const bucle = crearBucle(raiz, dt => {
     dtCuadro = dt;
+    if (orbitaVuelve && !dedosEscena.size && !orbitaCentrada(orbita) && performance.now() - orbitaTocada > ORBITA.vuelveS * 1000) { orbita = volverOrbita(orbita, dt, { reducir }); if (orbitaCentrada(orbita)) { orbita = orbitaInicial(); pintarBotones(); } }
     // En el vuelo con preguntas el piloto automático va 3 veces más rápido entre preguntas (no en la aproximación).
     const veces = guiado && !enAproximacion && !abierta && !flujo ? GUIADO.velocidadReloj : 1;
     if (!pausado && !abierta && !repe) for (let k = 0; k < veces; k++) { tiempo += dt; paso(dt); }
@@ -1321,7 +1399,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   }
 
   // ---- botones ----
-  function cambiarVista() { vista = vista === 'cabina' ? 'afuera' : 'cabina'; raiz.setAttribute('data-vista', vista); pintarBotones(); }
+  function cambiarVista() { vista = vista === 'cabina' ? 'afuera' : 'cabina'; raiz.setAttribute('data-vista', vista); orbita = orbitaInicial(); pintarBotones(); }
   function pintarBotones() {
     // La cámara: «Cabina 1/2» o «Afuera 2/2» (un toque pasa a la otra).
     const cab = vista === 'cabina';
@@ -1332,6 +1410,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     bFlaps.setAttribute('aria-pressed', String(g > 0)); bFlaps.textContent = g ? t('juego.flaps.grados', { g }) : t('juego.flaps');
     for (const b of muescas) b.setAttribute('aria-pressed', String(Math.abs(Number(b.dataset.f) - mandos.flaps) < 0.01));
     bFrenoMano.setAttribute('aria-pressed', String(Boolean(mandos.frenoMano)));
+    bVuelve.setAttribute('aria-pressed', String(orbitaVuelve));
+    const libre = !orbitaCentrada(orbita);
+    if (bCentrar.hidden === libre) bCentrar.hidden = !libre;
+    raiz.setAttribute('data-orbita', libre ? '1' : '0');
     bMapa.setAttribute('aria-pressed', String(verMapa)); raiz.setAttribute('data-mapa', verMapa ? '1' : '0');
     for (const b of botonesHora) b.setAttribute('aria-pressed', String(b.dataset.hora === hora));
     bTrafico.textContent = t(conTrafico ? 'juego.clase.trafico_si' : 'juego.clase.trafico_no');
@@ -1488,6 +1570,36 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   yugo.addEventListener('pointerup', soltarYugo);
   yugo.addEventListener('pointercancel', soltarYugo);
   yugo.addEventListener('lostpointercapture', () => { if (toque.activo) soltarYugo(); });
+  // ---- 0.14.119: la cámara libre: arrastrar el paisaje (un dedo o el ratón), pellizcar o la rueda; doble toque, centrar ----
+  // (solo sobre el paisaje: los mandos y los botones están encima y se quedan sus toques; el yugo sigue andando a la vez)
+  const dedosEscena = new Map();
+  let pellizco0 = null, ultimoToqueEscena = { t: -1e9, x: 0, y: 0 };
+  const cabinaLibre = () => (repe ? false : vista === 'cabina');
+  function centrarCamara() { orbita = orbitaInicial(); pintarBotones(); }
+  function tocarOrbita(nueva) { const antes = orbitaCentrada(orbita); orbita = nueva; orbitaTocada = performance.now(); if (antes !== orbitaCentrada(orbita)) pintarBotones(); }
+  lienzo.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    dedosEscena.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
+    try { lienzo.setPointerCapture(e.pointerId); } catch { /* sin captura */ }
+    if (dedosEscena.size === 2) { const [a, b] = [...dedosEscena.values()]; pellizco0 = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom: orbita.zoom }; }
+  });
+  lienzo.addEventListener('pointermove', e => {
+    const d = dedosEscena.get(e.pointerId); if (!d) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y; d.x = e.clientX; d.y = e.clientY;
+    if (dedosEscena.size === 1) tocarOrbita(arrastrarOrbita(orbita, dx, dy, { cabina: cabinaLibre() }));
+    else if (dedosEscena.size === 2 && pellizco0 && !cabinaLibre()) { const [a, b] = [...dedosEscena.values()]; tocarOrbita(zoomOrbita({ ...orbita, zoom: pellizco0.zoom }, pellizco0.d / (Math.hypot(a.x - b.x, a.y - b.y) || 1))); }
+  });
+  const soltarEscena = e => {
+    const d = dedosEscena.get(e.pointerId); if (!d) return;
+    dedosEscena.delete(e.pointerId); if (dedosEscena.size < 2) pellizco0 = null;
+    if (e.type !== 'pointerup' || Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 10 || performance.now() - d.t0 > 300) return;
+    // Doble toque en el paisaje: centrar.
+    const ahora = performance.now();
+    if (ahora - ultimoToqueEscena.t < 350 && Math.hypot(e.clientX - ultimoToqueEscena.x, e.clientY - ultimoToqueEscena.y) < 40) { centrarCamara(); ultimoToqueEscena = { t: -1e9, x: 0, y: 0 }; }
+    else ultimoToqueEscena = { t: ahora, x: e.clientX, y: e.clientY };
+  };
+  for (const tipo of ['pointerup', 'pointercancel', 'lostpointercapture']) lienzo.addEventListener(tipo, soltarEscena);
+  lienzo.addEventListener('wheel', e => { if (cabinaLibre()) return; e.preventDefault(); tocarOrbita(zoomOrbita(orbita, Math.exp(Math.max(-200, Math.min(200, e.deltaY)) * 0.0015))); }, { passive: false });
   // ---- la palanca de potencia ----
   const ponerPotencia = e => {
     const r = potencia.getBoundingClientRect();
@@ -1574,7 +1686,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // Para las capturas y las pruebas: poner el avión en un estado y dibujar ya (también en raiz.juego, para las capturas).
   const control = {
-    raiz, destruir, reiniciar, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
+    raiz, destruir, reiniciar, get orbita() { return orbita; }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
     ponerTrafico(tipo) { trafico = [{ ...crearTrafico(tipo, avion), fase: 0.3 }]; return trafico[0]; },
     get guiado() { return guiado; }, get puntaje() { return puntaje; }, get pool() { return pool; }, get flujo() { return flujo; }, get faseClase() { return faseClase; }, responderClase,
     get trafico() { return trafico; }, ponerMandos(m) { Object.assign(mandos, m); pintarPotencia(); }, verMapa(lejos) { mapaLejos = Boolean(lejos); pintarMapas(); dibujarMapa(); },

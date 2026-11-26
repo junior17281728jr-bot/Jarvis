@@ -547,81 +547,89 @@ body.juego-activo { overflow: hidden; }
 .juego-hoja-nota { margin: 0; color: #c9d3e3; font: 650 13px/1.3 system-ui, -apple-system, sans-serif; }
 .juego-vuelo .juego-ayuda2 { display: inline-flex !important; }
 
-/* Los paneles de los mandos (firmes, con tornillos en las puntas). */
-.juego-vuelo .juego-mandos { background: #090b0f; }
-.juego-panel { box-sizing: border-box; padding: 8px; border-radius: 14px; border: 1px solid #000;
-  background: radial-gradient(circle at 7px 7px, #6b717c 0 2px, transparent 2.5px), radial-gradient(circle at calc(100% - 7px) 7px, #6b717c 0 2px, transparent 2.5px),
-    radial-gradient(circle at 7px calc(100% - 7px), #6b717c 0 2px, transparent 2.5px), radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #6b717c 0 2px, transparent 2.5px),
-    linear-gradient(#1f2228, #14161a);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px #2a2e36; }
-.juego-panel-izq { display: grid; gap: 8px; align-content: center; }
-.juego-palancas { display: flex; gap: 8px; justify-content: center; align-items: flex-start; }
-.juego-frenos { display: flex; gap: 6px; }
-.juego-frenos > .juego-boton { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 11.5px; }
+/* 0.14.119 (el dueño: «no se ve el fondo… ahí deja ver el fondo»): en el teléfono la escena ocupa TODA la pantalla y los
+   mandos flotan encima en grupos chicos y firmes (con sombra), pegados a los bordes: entre ellos y alrededor se ve el
+   paisaje (o la cabina). Nada de columnas ni franjas negras. */
+.juego-vuelo[data-tactil="1"] { display: block; }
+.juego-vuelo[data-tactil="1"] .juego-escenario { position: absolute; inset: 0; }
+.juego-vuelo[data-tactil="1"] .juego-mandos { position: absolute; inset: 0; z-index: 2; display: block; width: auto; padding: 0; border: 0; background: none; pointer-events: none; }
+.juego-panel { position: absolute; display: flex; gap: 6px; pointer-events: none; }
+.juego-panel > * { pointer-events: auto; }
+/* Cada grupo: una pieza firme, con relieve y sombra (los botones de adentro, como siempre). */
+.juego-grupo, .juego-potencia-caja, .juego-flaps-caja, .juego-yugo-marco { box-sizing: border-box; padding: 6px; border-radius: 12px; border: 1px solid #000; border-top-color: #4b515c;
+  background: linear-gradient(#272a31, #17191d); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 16px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.6); }
+.juego-panel-izq { left: max(6px, env(safe-area-inset-left)); bottom: max(6px, env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; }
+.juego-panel-der { right: max(6px, env(safe-area-inset-right)); bottom: max(6px, env(safe-area-inset-bottom)); flex-direction: column; align-items: flex-end; }
+.juego-palancas { display: flex; gap: 6px; align-items: flex-end; pointer-events: none; }
+.juego-palancas > * { pointer-events: auto; }
+.juego-frenos { display: flex; gap: 6px; pointer-events: none; }
+.juego-frenos > .juego-boton { pointer-events: auto; flex: 1 1 0; min-width: 0; padding: 4px 6px; line-height: 1.05; font-size: 11px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -2px 0 rgba(0,0,0,0.35), 0 2px 0 #050607, 0 6px 14px rgba(0,0,0,0.5); }
 .juego-freno { background: linear-gradient(#5a2622, #3a1512) !important; border-top-color: #a3564f !important; }
 .juego-freno[aria-pressed="true"] { transform: translateY(2px); box-shadow: inset 0 2px 5px rgba(0,0,0,0.65) !important; background: linear-gradient(#7a2a24, #4f1915) !important; }
-.juego-panel-der { display: grid; gap: 8px; align-content: center; }
-.juego-atajos { display: flex; gap: 6px; }
-.juego-atajos > .juego-boton { flex: 1 1 0; min-width: 0; padding: 4px 6px; font-size: 11.5px; }
-.juego-yugo-marco { display: flex; gap: 8px; align-items: center; justify-content: center; padding: 6px; border-radius: 12px; background: #0c0e11; box-shadow: inset 0 2px 6px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.06); }
-.juego-mando-nombre { color: #c9d1dd; font: 800 11px/1.2 system-ui, -apple-system, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+.juego-atajos { display: flex; gap: 6px; pointer-events: none; }
+.juego-atajos > .juego-boton { pointer-events: auto; min-width: 0; padding: 4px 8px; font-size: 11px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -2px 0 rgba(0,0,0,0.35), 0 2px 0 #050607, 0 6px 14px rgba(0,0,0,0.5); }
+.juego-yugo-marco { display: flex; gap: 6px; align-items: center; }
+.juego-yugo-caja, .juego-trim-caja { display: grid; justify-items: center; gap: 3px; }
+.juego-mando-nombre { color: #c9d1dd; font: 800 10.5px/1.2 system-ui, -apple-system, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
 /* La palanca de potencia: la manija con estrías que corre en una ranura, la barra que se llena y el % abajo. */
+.juego-potencia-caja { display: grid; justify-items: center; padding-top: 6px; }
 .juego-potencia-caja .juego-mando-nombre { margin-bottom: 14px; }
 .juego-potencia-pista { background: #050608; box-shadow: inset 0 2px 4px #000, 0 1px 0 rgba(255,255,255,0.08); }
 .juego-potencia-relleno { background: linear-gradient(#36e26a, #129a3a); opacity: 0.85; }
 .juego-potencia-manija { background: repeating-linear-gradient(#2a2d33 0 3px, #15171b 3px 5px); border: 2px solid #9aa2b1; border-top-color: #e8ecf2; box-shadow: 0 3px 6px rgba(0,0,0,0.6); }
-.juego-potencia-valor { font: 800 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e9eef6; }
+.juego-potencia-valor { font: 800 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e9eef6; }
 /* La palanca de los flaps: el riel con sus muescas (UP · 10° · 20° · 30°); la elegida se ve como la palanca puesta ahí. */
 .juego-flaps-caja { display: grid; justify-items: center; gap: 4px; }
 .juego-flaps-riel { display: grid; gap: 2px; padding: 3px; border-radius: 10px; background: #050608; box-shadow: inset 0 2px 4px #000; }
-.juego-vuelo .juego-muesca { min-width: 58px; min-height: 36px; padding: 2px 4px; border-radius: 7px; font-size: 12px; background: linear-gradient(#262a30, #1a1c21); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); color: #aab3c2; }
+.juego-vuelo .juego-muesca { min-width: 54px; min-height: 36px; padding: 2px 4px; border-radius: 7px; font-size: 12px; background: linear-gradient(#262a30, #1a1c21); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); color: #aab3c2; }
 .juego-vuelo .juego-muesca[aria-pressed="true"] { color: #111; background: linear-gradient(#ffffff, #cfd4db 60%, #aab1bb); border-top-color: #fff; text-shadow: none; box-shadow: 0 2px 0 #050607, 0 0 0 2px rgba(255,176,32,0.6); }
 /* La compensación: ▲ (nariz abajo), la rueda con su marca y ▼ (nariz arriba). */
-.juego-trim-caja { display: grid; justify-items: center; gap: 4px; }
 .juego-vuelo .juego-trim-b { min-width: 40px; min-height: 40px; padding: 0; font-size: 13px; }
-.juego-trim-escala { position: relative; width: 22px; height: 84px; border-radius: 6px; background: #050608; box-shadow: inset 0 2px 4px #000; overflow: hidden; }
+.juego-trim-escala { position: relative; width: 20px; height: 64px; border-radius: 6px; background: #050608; box-shadow: inset 0 2px 4px #000; overflow: hidden; }
 .juego-trim-rueda { position: absolute; inset: 3px 4px; border-radius: 4px; background: repeating-linear-gradient(#3b3e45 0 3px, #111214 3px 6px); }
 .juego-trim-marca { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: #ffb020; box-shadow: 0 0 4px rgba(255,176,32,0.8); }
-/* El yugo, más grande y en su marco. */
+/* El yugo, en su marco (cuadrado, no más alto de lo necesario). */
 .juego-yugo { background: radial-gradient(circle, #222a38 0 55%, #151b26 56%); border: 2px solid #4a566c; box-shadow: inset 0 2px 8px rgba(0,0,0,0.7); }
-
-/* El teléfono de pie: los dos paneles abajo, uno al lado del otro. */
-.juego-vuelo[data-tactil="1"] .juego-mandos { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); gap: 8px; align-items: stretch;
-  padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-top: 1px solid #1d2636; }
-.juego-vuelo[data-tactil="1"] .juego-yugo { width: 124px; height: 124px; }
-/* El teléfono de lado: los paneles a los costados (dentro del área segura); el centro, para el avión y el horizonte. */
+.juego-vuelo[data-tactil="1"] .juego-yugo { width: 118px; height: 118px; }
+/* El panel de información: vidrio oscuro (se ve un poco el fondo), como los de arriba. */
+.juego-vuelo .juego-info { background: rgba(14,17,22,0.62); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 4px 12px rgba(0,0,0,0.35); }
+.juego-panel-der > .juego-info { align-self: stretch; min-width: 0; padding: 4px 8px; }
+.juego-panel-der > .juego-info .juego-info-fila { gap: 6px; font-size: 11px; flex-wrap: wrap; }
+.juego-panel-der > .juego-info .juego-destino { white-space: normal; font-size: 11px; }
+/* Los datos del vuelo (vista de afuera): vidrio, abajo a la izquierda, por encima de los mandos. */
+.juego-vuelo .juego-escenario .juego-hud { background: rgba(14,17,22,0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.14); }
+.juego-vuelo[data-tactil="1"] .juego-escenario .juego-hud { bottom: calc(var(--reserva-abajo, 0px) + 8px); left: calc(var(--reserva-izq, 0px) + 8px); }
+.juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes { bottom: calc(var(--reserva-abajo, 0px) + max(6px, env(safe-area-inset-bottom))); }
+/* De pie: los grupos a lo largo de abajo, sobre la escena. */
+.juego-vuelo[data-tactil="1"] .juego-escenario .juego-mapas { top: calc(max(8px, env(safe-area-inset-top)) + 112px); }
+/* De lado: un grupo en cada borde; el centro, libre para el avión y el horizonte. */
 @media (orientation: landscape) and (max-height: 500px) {
-  .juego-vuelo[data-tactil="1"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); }
-  .juego-vuelo[data-tactil="1"] .juego-mandos { display: contents; }
-  .juego-vuelo[data-tactil="1"] .juego-panel-izq { grid-column: 1; grid-row: 1; margin: max(6px, env(safe-area-inset-top)) 0 max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); width: 150px; }
-  .juego-vuelo[data-tactil="1"] .juego-escenario { grid-column: 2; grid-row: 1; }
-  .juego-vuelo[data-tactil="1"] .juego-panel-der { grid-column: 3; grid-row: 1; margin: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 0; width: 196px; }
-  .juego-vuelo[data-tactil="1"] .juego-muesca { min-height: 44px; }
-  .juego-vuelo[data-tactil="1"] .juego-yugo { width: 136px; height: 136px; }
-  .juego-vuelo[data-tactil="1"] .juego-yugo-marco { padding: 6px 4px; gap: 4px; }
-  .juego-vuelo[data-tactil="1"] .juego-palancas { gap: 6px; }
-  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-fila2 { top: calc(max(6px, env(safe-area-inset-top)) + 50px); }
-  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-mapas { top: calc(max(6px, env(safe-area-inset-top)) + 100px); }
+  .juego-vuelo[data-tactil="1"] .juego-muesca { min-height: 40px; }
+  .juego-vuelo[data-tactil="1"] .juego-yugo { width: 112px; height: 112px; }
+  .juego-vuelo[data-tactil="1"] .juego-trim-escala { height: 52px; }
+  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-fila2 { top: calc(max(6px, env(safe-area-inset-top)) + 50px); right: auto; max-width: 46%; }
+  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-mapas { top: calc(max(6px, env(safe-area-inset-top)) + 50px); right: auto; left: 50%; transform: translateX(-50%); }
   .juego-vuelo[data-tactil="1"] .juego-escenario .juego-mapas .clase-sit-mapa { height: 92px; }
-  .juego-vuelo[data-tactil="1"] .juego-fila2 { flex-wrap: wrap; }
   .juego-vuelo[data-tactil="1"] .juego-fila2 .juego-chip { -webkit-line-clamp: 2; font-size: 12.5px; }
   .juego-vuelo[data-tactil="1"] .juego-barra .juego-boton { padding: 4px 8px; font-size: 11.5px; }
   .juego-vuelo[data-tactil="1"] .juego-camara { min-width: 84px !important; }
-  .juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { grid-column: 3; grid-row: 1; width: 196px; margin: 6px 6px 6px 0; }
+  .juego-vuelo[data-tactil="1"] .juego-panel-der { width: 186px; }
+  .juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes { right: auto; left: 50%; transform: translateX(-50%); }
+  .juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes:active { transform: translateX(-50%) translateY(2px); }
+  /* (en la cabina, la pestaña va arriba, en el techo: abajo tapaba el yugo y los mandos dibujados) */
+  .juego-vuelo[data-tactil="1"][data-vista="cabina"] .juego-escenario > .juego-componentes { top: max(8px, env(safe-area-inset-top)); bottom: auto; min-height: 44px; }
 }
-@media (max-width: 360px) { .juego-vuelo[data-tactil="1"] .juego-yugo { width: 112px; height: 112px; } .juego-vuelo .juego-muesca { min-width: 50px; } }
+@media (max-width: 360px) { .juego-vuelo[data-tactil="1"] .juego-yugo { width: 104px; height: 104px; } .juego-vuelo .juego-muesca { min-width: 48px; } }
 /* Con preguntas vuela el piloto automático: sin mandos (la cámara y la pausa quedan arriba). */
 .juego-vuelo[data-modo="preguntas"] .juego-mandos { display: none !important; }
-.juego-vuelo[data-modo="preguntas"] .juego-panel { display: none !important; }
-/* La práctica del motor: el panel de la derecha deja lugar a la lista. */
+/* La práctica del motor: la lista en el lugar del yugo (flota igual, a la derecha). */
 .juego-vuelo[data-modo="motor"] :is(.juego-panel-der, .juego-flaps-caja) { display: none; }
-.juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { grid-column: 2; grid-row: 1; height: auto; max-height: 220px; }
+.juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { position: absolute; pointer-events: auto; right: max(6px, env(safe-area-inset-right)); bottom: max(6px, env(safe-area-inset-bottom)); width: min(240px, 58%); height: auto; max-height: 230px; overflow: auto; box-shadow: 0 6px 16px rgba(0,0,0,0.45); }
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { top: calc(max(6px, env(safe-area-inset-top)) + 52px); width: 220px; max-height: none; margin: 0; }
+}
 @media (prefers-reduced-motion: reduce) {
   .juego-vuelo .juego-boton, .juego-componentes .juego-flecha { transition: none; }
-}
-/* (de lado, la lista de la prueba de motor va en la columna de la derecha; el cajón deja pasar sus mandos a otra fila) */
-@media (orientation: landscape) and (max-height: 500px) {
-  .juego-vuelo[data-modo="motor"][data-tactil="1"] .juego-mandos .juego-runup { grid-column: 3; grid-row: 1; width: 210px; height: auto; max-height: none; margin: 6px 6px 6px 0; overflow: auto; }
 }
 .juego-escenario .juego-motor .juego-motor-mandos { flex-wrap: wrap; }
 /* El aviso corto (el tráfico, el altímetro): una línea con «Cerrar» al lado, arriba sobre el techo; se va solo. */
@@ -629,3 +637,6 @@ body.juego-activo { overflow: hidden; }
 .juego-aviso.juego-aviso-corto .juego-aviso-titulo { flex: 1; min-width: 0; font-size: 14px; }
 .juego-aviso.juego-aviso-corto .juego-aviso-botones { margin: 0; flex: none; }
 .juego-aviso.juego-aviso-corto .juego-boton { min-height: 40px; padding: 4px 10px; font-size: 12px; }
+.juego-vuelo .juego-boton[hidden] { display: none !important; }
+/* (el cajón de los componentes, entre los mandos que flotan: no los tapa) */
+.juego-vuelo[data-tactil="1"] .juego-escenario .juego-motor { left: calc(var(--reserva-izq, 0px) + 8px); right: calc(var(--reserva-der, 0px) + 8px); bottom: calc(var(--reserva-abajo, 0px) + max(6px, env(safe-area-inset-bottom)) + 48px); max-width: none; }
