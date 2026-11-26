@@ -512,7 +512,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // sin WebGL, en las mini-clases para mirar o en la repetición, la dibujada. «Cabina 3D» en el Menú.
   let cabina3dOn = false; // (0.14.125: en prueba: apagada al empezar, se elige en el Menú)
   const usa3d = () => Boolean(gl3) && cabina3dOn && !mc?.fov && !repe;
-  const MIRADA_3D = 9;
+  const MIRADA_3D = 4; // (el horizonte cerca del medio; el tablero en el tercio de abajo)
   function medir() {
     const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, tactil ? 1.6 : 2) * calidad;
     const w = lienzo.clientWidth || 640, hh = lienzo.clientHeight || 400;
@@ -524,7 +524,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     const pos = posicionAvion(avion);
     if (vista === 'cabina' && usa3d()) {
       // 0.14.124: desde el asiento izquierdo de la cabina 3D, mirando un poco hacia abajo (se ve el tablero y el horizonte).
-      const fov = ancho < alto ? 74 : deLado() ? 64 : 58;
+      const fov = ancho < alto ? 70 : deLado() ? 56 : 52;
       const B = baseCabina(pos, avion.rumbo, avion.cabeceo, avion.alabeo), bv = baseAvion(avion.rumbo, avion.cabeceo - MIRADA_3D - (reserva.abajo * escalaPx / Math.max(1, alto)) * fov * 0.75, avion.alabeo);
       const turb = tiempo < rafagaHasta ? 1 : Math.min(1, turbLeve * 2.5);
       const rueda = avion.enSuelo && avion.kt > 1 && !avion.agua ? Math.min(1, avion.kt / 45) * (Math.sin(tiempo * 23.3) * 0.6 + Math.sin(tiempo * 37.1) * 0.4) * 0.00003 : 0;
@@ -619,7 +619,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     const cam = r ? r.cam : camara();
     const prims = r ? [...primitivasRepeticion(repe, r.t, { conPropio: r.toma !== 'cabina', conCaminos: r.toma !== 'cabina', toma: r.toma }), ...repeNube]
       : vista === 'afuera' ? avionPropio(avion, { t: tiempo, yugo: mandosAhora(), luces: lucesDe(avion), reducir })
-      : usa3d() ? primitivasCabina3d({ pos: posicionAvion(avion), rumbo: avion.rumbo, cabeceo: avion.cabeceo, alabeo: avion.alabeo, yugo: mandosAhora(), potencia: mandos.potencia, mezcla: avion.pist?.mezcla ?? 1, hora }) : [];
+      : usa3d() ? primitivasCabina3d({ pos: posicionAvion(avion), rumbo: avion.rumbo, cabeceo: avion.cabeceo, alabeo: avion.alabeo, yugo: mandosAhora(), potencia: mandos.potencia, mezcla: avion.pist?.mezcla ?? 1, calor: Boolean(avion.pist?.calor), hora }) : [];
     // 0.14.105: la luz de aterrizaje y la de rodaje (de noche se ve la pista iluminada), también desde la cabina.
     if (!r) { const la = lucesActivas(avion.pist ?? { master: true }); prims.push(...luzAterrizaje(avion, { aterrizaje: la.aterrizaje, rodaje: la.rodaje, suelo: alturaSuelo(avion.x, avion.z) }).filter(q => vista === 'afuera' || q.t !== 's')); }
     if (!r) prims.push(...lucesDinamicas(cam.ojo));
@@ -1892,7 +1892,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // Para las capturas y las pruebas: poner el avión en un estado y dibujar ya (también en raiz.juego, para las capturas).
   const control = {
-    raiz, destruir, reiniciar, get orbita() { return orbita; }, ponerPajaros(si) { pajarosOn = Boolean(si); proximaBandada = tiempo; pintarBotones(); }, get bandadas() { return bandadas; }, ponerRelampago(k) { relampago = k; }, get asistente() { return asistente; }, ponerAsistente(si) { asistente = Boolean(si); pintarBotones(); }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
+    raiz, destruir, reiniciar, get orbita() { return orbita; }, ponerCabina3d(si) { cabina3dOn = Boolean(si); pintarBotones(); }, ponerPajaros(si) { pajarosOn = Boolean(si); proximaBandada = tiempo; pintarBotones(); }, get bandadas() { return bandadas; }, ponerRelampago(k) { relampago = k; }, get asistente() { return asistente; }, ponerAsistente(si) { asistente = Boolean(si); pintarBotones(); }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
     ponerTrafico(tipo) { trafico = [{ ...crearTrafico(tipo, avion), fase: 0.3 }]; return trafico[0]; },
     get guiado() { return guiado; }, get puntaje() { return puntaje; }, get pool() { return pool; }, get flujo() { return flujo; }, get faseClase() { return faseClase; }, responderClase,
     get trafico() { return trafico; }, ponerMandos(m) { Object.assign(mandos, m); pintarPotencia(); }, verMapa(lejos) { mapaLejos = Boolean(lejos); pintarMapas(); dibujarMapa(); },
