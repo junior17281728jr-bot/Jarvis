@@ -5,7 +5,7 @@ import './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dibujarCabina, dibujarLadoCabina, geometriaCabina, posicionesAbajo, FLAPS_GRADOS, flapsAGrados } from '../public/clase/cabina.js';
+import { dibujarCabina, dibujarLadoCabina, dibujarRelojesAfuera, ARCOS_KT, geometriaCabina, posicionesAbajo, FLAPS_GRADOS, flapsAGrados } from '../public/clase/cabina.js';
 import { crearAvion, pasoVuelo, sustentacion, lecturas, VUELO, alfaNivel, LIMITES, tasaConCarga, invertido, alfaParaCarga, perdidaConCarga, juzgarAterrizaje } from '../public/clase/vuelo-modelo.js';
 import { TIEMPOS, TIEMPO_FAA, condiciones, nivelTurbulencia, mangaDeViento, nubesDe, MANGA, corrienteVertical, rafagaDe, vientoTexto } from '../public/clase/juego-tiempo.js';
 import { contenidoSinZoom, bloquearZoom, activarToques, SELECTOR_TOQUE } from '../public/clase/juego-tactil.js';
@@ -345,4 +345,38 @@ test('0.14.119: el avión como el de verdad: sin topes sin el Asistente, el fact
   for (const k of ['juego.limite.g', 'juego.limite.vne', 'juego.limite.tose', 'juego.res.estructura', 'juego.res.consejo.sobrecarga', 'juego.res.consejo.vne']) assert.ok(es[k] && en[k], k);
   // Los jueces del aterrizaje, iguales.
   assert.equal(juzgarAterrizaje({ kt: 60, vs: -200, alabeo: 0, costado: 5, dentro: true }).nivel, 'bueno');
+});
+
+test('0.14.121: la vista desde la cabina en el teléfono de lado (más afuera) y los relojes de afuera con sus arcos', () => {
+  // De lado (escenario 844×390 a 1.6, con los mandos a los costados), el tablero compacto: más de la mitad para el parabrisas.
+  const e = 1.6, W = 844 * e, H = 390 * e, techo = 64 * e, reserva = { izq: 170 * e, der: 200 * e, abajo: 0 };
+  const grande = geometriaCabina(W, H, { escala: e, techo, reserva }), chico = geometriaCabina(W, H, { escala: e, techo, reserva, compacto: true });
+  assert.ok((chico.yp - chico.techo) / H >= 0.5, `parabrisas ${((chico.yp - chico.techo) / H * 100).toFixed(0)} % del alto`);
+  assert.ok(chico.yp > grande.yp, 'el tablero compacto es más bajo');
+  assert.ok(chico.r * 2 * e >= 2 * 25 * e * 0.9, 'los relojes, chicos pero legibles');
+  assert.ok(chico.xs[0] - chico.r > reserva.izq && chico.xm + chico.r < W - reserva.der, 'la fila de relojes, entre los mandos');
+  const { ctx, ops, numeros } = contexto();
+  dibujarCabina(ctx, W, H, datos(), { escala: e, completo: true, compacto: true, techo, reserva, extras: EX, yugo: { alabeo: 0.2, cabeceo: 0 } });
+  assert.ok(numeros().every(Number.isFinite));
+  for (const s of ['1,650', '095', 'KNOTS']) assert.ok(ops.some(o => o[0] === 'fillText' && o[1] === s), s);
+  // El horizonte, más o menos en el medio de la pantalla.
+  const fov = 62, g = miradaCabina(fov, (H - chico.yp) / H, chico.techo / H), f = 0.5 / Math.tan((fov * Math.PI) / 360);
+  const y = 0.5 - Math.tan((g * Math.PI) / 180) * f;
+  assert.ok(y > 0.38 && y < 0.55, `horizonte a ${(y * 100).toFixed(0)} % del alto`);
+  // Los relojes de afuera: el velocímetro con los mismos arcos de la cabina, la aguja en su lugar y los kt en número.
+  for (const [kt, amarillo, rojo] of [[95, false, false], [ARCOS_KT.verdeHasta + 5, true, false], [ARCOS_KT.vne + 4, false, true]]) {
+    const c = contexto();
+    const r = dibujarRelojesAfuera(c.ctx, 300, 78, lecturas({ ...crearAvion({ ft: 1500, enSuelo: false }), kt }), { escala: 1 });
+    assert.deepEqual(r, { amarillo, rojo }, `${kt} kt`);
+    assert.ok(c.numeros().every(Number.isFinite));
+    assert.ok(c.ops.some(o => o[0] === 'fillText' && o[1] === String(kt)), 'los kt en número');
+    assert.ok(c.ops.some(o => o[0] === 'fillText' && o[1] === '160'), 'la escala');
+  }
+  const vista = leer('juego-vista.js'), css = leer('juego.css');
+  assert.match(vista, /dibujarRelojesAfuera\(hudCtx/);
+  assert.match(vista, /const cabinaCompacta = \(\) => deLado\(\) && !panelGrande;/);
+  assert.match(css, /\.juego-vuelo\[data-tenues="1"\]:not\(\[data-tocando="1"\]\) \.juego-panel \{ opacity: 0\.4;/);
+  assert.match(css, /\.juego-chip\[data-viejo\] \{ opacity: 0;/);
+  const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
+  for (const k of ['juego.panel_grande', 'juego.mandos_tenues', 'juego.instrumentos', 'juego.instrumentos.chicos', 'juego.instrumentos.grandes', 'juego.instrumentos.texto']) assert.ok(es[k] && en[k], k);
 });

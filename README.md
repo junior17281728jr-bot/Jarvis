@@ -716,6 +716,19 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.121: más afuera desde la cabina y el velocímetro de verdad afuera — sin cambio de base
+
+- **La cabina en el teléfono de lado** (el dueño: «mejora esa vista en primera persona, ya que no se ve tanto»): el ojo más
+  bajo: el tablero compacto con los siete relojes en una fila (`geometriaCabina({ compacto })`), el techo fino, un campo un poco
+  más ancho; el parabrisas queda con más de la mitad del alto y el horizonte cerca del medio. «Panel grande» en el Menú vuelve
+  al de dos filas. El consejo va en una línea en la fila de los botones y se apaga solo a los 8 s; «Componentes», arriba del
+  panel de la izquierda; «Mandos tenues» (Menú) los deja al 40 % hasta tocarlos. Las marcas del tráfico ya no quedan debajo de
+  los mandos (el pedazo «NM» que se veía).
+- **Afuera, los relojes** (el dueño: «ver el velocímetro… la raya roja, blanca y amarilla»): el velocímetro con sus arcos y la
+  raya roja (el mismo dibujo que la cabina), la actitud, el altímetro y el variómetro, en un vidrio oscuro
+  (`dibujarRelojesAfuera`); en el arco amarillo el borde se pone ámbar y pasada la VNE, rojo. En el Menú: chicos, grandes o texto.
+- Pruebas: `test/juego-cabina.test.js`.
+
 ### Lo nuevo de la 0.14.120: la tormenta, las ráfagas aparte y el avión que vuela como el de verdad — sin cambio de base
 
 - **Tormenta** (Menú → Tiempo): nubes bajas y oscuras, lluvia fuerte, rayos (uno cada 3 s o más; con «menos movimiento», una

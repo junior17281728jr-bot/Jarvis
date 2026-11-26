@@ -640,3 +640,35 @@ body.juego-activo { overflow: hidden; }
 .juego-vuelo .juego-boton[hidden] { display: none !important; }
 /* (el cajón de los componentes, entre los mandos que flotan: no los tapa) */
 .juego-vuelo[data-tactil="1"] .juego-escenario .juego-motor { left: calc(var(--reserva-izq, 0px) + 8px); right: calc(var(--reserva-der, 0px) + 8px); bottom: calc(var(--reserva-abajo, 0px) + max(6px, env(safe-area-inset-bottom)) + 48px); max-width: none; }
+
+/* ---------- 0.14.121: la vista desde la cabina en el teléfono de lado (más afuera, menos techo) y los mandos tenues ---------- */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* El consejo va en la fila de los botones (entre «Cabina» y la pausa), en una línea, y se apaga solo a los 8 s. */
+  .juego-vuelo[data-tactil="1"] .juego-escenario .juego-fila2 { top: max(8px, env(safe-area-inset-top)); left: 250px; right: 150px; max-width: none; justify-content: center; }
+  .juego-vuelo[data-tactil="1"] .juego-fila2 .juego-chip { -webkit-line-clamp: 1; font-size: 12px; line-height: 1.3; max-height: calc(1.3em + 10px); padding: 5px 9px 0; border-bottom: 5px solid transparent; min-height: 0; }
+  .juego-vuelo[data-tactil="1"] .juego-fila2 .juego-chip[data-viejo] { opacity: 0; pointer-events: none; transition: opacity 600ms; }
+  .juego-vuelo[data-tactil="1"][data-orbita="1"] .juego-escenario .juego-fila2 { left: 340px; }
+  /* «Componentes», arriba del panel de la izquierda. */
+  .juego-vuelo[data-tactil="1"] .juego-panel-izq > .juego-componentes { position: static; transform: none; min-height: 40px; padding: 4px 8px; font-size: 11px; border-radius: 10px; pointer-events: auto; }
+  .juego-vuelo[data-tactil="1"] .juego-panel-izq > .juego-componentes:active { transform: translateY(2px); }
+  .juego-vuelo[data-tactil="1"] .juego-mapas { top: calc(max(6px, env(safe-area-inset-top)) + 52px) !important; }
+}
+@media (orientation: landscape) and (max-height: 500px) and (prefers-reduced-motion: reduce) { .juego-vuelo[data-tactil="1"] .juego-fila2 .juego-chip[data-viejo] { transition: none; } }
+/* Los mandos tenues (Menú → «Mandos tenues»): al 40 % hasta que se tocan. */
+.juego-vuelo[data-tenues="1"]:not([data-tocando="1"]) .juego-panel { opacity: 0.4; transition: opacity 300ms; }
+@media (prefers-reduced-motion: reduce) { .juego-vuelo[data-tenues="1"] .juego-panel { transition: none; } }
+/* Los relojes de afuera (0.14.121): en un vidrio oscuro, abajo a la izquierda; «grandes», «chicos» o solo «texto» (Menú). */
+.juego-hud-lienzo { display: block; width: 300px; height: 78px; }
+.juego-vuelo[data-instr="grandes"] .juego-hud-lienzo { width: 400px; height: 104px; }
+.juego-vuelo:not([data-instr="texto"]) .juego-hud-texto { display: none; }
+.juego-vuelo[data-instr="texto"] .juego-hud-lienzo { display: none; }
+.juego-hud-texto { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 12px; }
+.juego-vuelo .juego-escenario .juego-hud { display: block; padding: 4px; border-radius: 12px; }
+.juego-vuelo[data-instr="texto"] .juego-escenario .juego-hud { padding: 6px 10px; }
+.juego-escenario .juego-hud[data-arco="amarillo"] { border-color: #e5c33e; box-shadow: 0 0 0 2px rgba(229,195,62,0.55); }
+.juego-escenario .juego-hud[data-arco="rojo"] { border-color: #e5483e; box-shadow: 0 0 0 3px rgba(229,72,62,0.7); }
+@media (max-width: 430px) { .juego-hud-lienzo { width: min(260px, calc(100vw - 150px)); height: 66px; } .juego-vuelo[data-instr="grandes"] .juego-hud-lienzo { width: calc(100vw - 24px); height: 92px; } }
+@media (orientation: landscape) and (max-height: 500px) { .juego-hud-lienzo { width: min(300px, calc(100vw - 420px)); height: 72px; } .juego-vuelo[data-instr="grandes"] .juego-hud-lienzo { width: min(380px, calc(100vw - 400px)); height: 96px; } }
+.juego-vuelo[data-vista="cabina"] .juego-escenario .juego-hud { display: none; }
+/* (de pie, los relojes de afuera van encima de la fila de «Componentes»: no se pisan) */
+@media (orientation: portrait) { .juego-vuelo[data-tactil="1"] .juego-escenario .juego-hud { bottom: calc(var(--reserva-abajo, 0px) + 58px); } }

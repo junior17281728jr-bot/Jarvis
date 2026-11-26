@@ -66,9 +66,19 @@ export function datosPanel(d = {}) {
 //     xs (las tres columnas de los seis básicos), fila1, fila2, xm (la columna del motor), tira (la fila de abajo), alto1 }
 // reserva { izq, der, abajo } (px): lo que tapan los mandos que flotan encima (0.14.119, el teléfono): los relojes van en lo
 // que queda libre; el tablero, el marco y las ventanas siguen ocupando toda la pantalla (detrás de los mandos).
-export function geometriaCabina(ancho, alto, { escala = 1, techo = 0, reserva = null } = {}) {
+// compacto (0.14.121, el teléfono de lado; el dueño: «mejora esa vista en primera persona, ya que no se ve tanto»): el ojo más
+// bajo: el tablero más bajito, con los seis básicos y el tacómetro en una sola fila (el parabrisas queda con más de la mitad).
+export function geometriaCabina(ancho, alto, { escala = 1, techo = 0, reserva = null, compacto = false } = {}) {
   const izq = lim(num(reserva?.izq), 0, ancho * 0.45), der = lim(num(reserva?.der), 0, ancho * 0.45), abajo = lim(num(reserva?.abajo), 0, alto * 0.45);
   const W = ancho - izq - der, H = alto - abajo;
+  if (compacto) {
+    const panel = Math.max(H * 0.3, 110 * escala), yp = H - panel;
+    const r = Math.min(W / (7 * 2.35) , panel * 0.29, 60 * escala), ancho1 = r * 2.35;
+    const fila = yp + panel * 0.4, x0 = izq + W / 2 - ancho1 * 3;
+    const xs = [x0, x0 + ancho1, x0 + ancho1 * 2], tira = yp + panel * 0.86, alto1 = panel * 0.2;
+    const techoPx = lim(Math.max(num(techo), alto * 0.05), 0, Math.max(0, yp - alto * 0.12));
+    return { panel, yp, techo: techoPx, ancha: false, compacto: true, r, ancho1, xs, fila1: fila, fila2: fila, xm: x0 + ancho1 * 6, tira, alto1, ancho, alto, izq, der, abajo, anchoUtil: W };
+  }
   const panel = Math.max(H * (W > H * 1.3 ? 0.5 : 0.46), 170 * escala), yp = H - panel;
   const ancha = W >= H * 1.3 && W > 700 * escala;
   const r = Math.min((W / 4.6) * 0.42, panel * 0.165, 92 * escala), ancho1 = r * 2.42;
@@ -84,15 +94,15 @@ export function geometriaCabina(ancho, alto, { escala = 1, techo = 0, reserva = 
 // opciones: escala (px por px CSS), textos, completo (el Juego: dos filas, motor y yugo), yugo { alabeo, cabeceo } (-1..1),
 // noche (la luz de los instrumentos) u hora ('dia' | 'atardecer' | 'noche'), techo (px), crearLienzo (w, h) → lienzo
 // (para guardar lo que no se mueve), extras (lo del Juego). → el alto (px) que tapa el tablero.
-export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}, completo = false, yugo = null, noche = false, hora = null, extras = null, techo = 0, reserva = null, crearLienzo = null } = {}) {
+export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}, completo = false, yugo = null, noche = false, hora = null, extras = null, techo = 0, reserva = null, compacto = false, crearLienzo = null } = {}) {
   const D = datosPanel(datos), luz = hora === 'noche' || hora === 'atardecer' || hora === 'dia' ? hora : noche ? 'noche' : 'dia';
   const C = colores(luz), T = k => textos[k] ?? TEXTOS_CABINA[k];
   if (!completo) return cabinaSimple(ctx, ancho, alto, D, C, escala, T);
-  const G = geometriaCabina(ancho, alto, { escala, techo, reserva });
+  const G = geometriaCabina(ancho, alto, { escala, techo, reserva, compacto });
   const ex = extras ?? {};
   const conEgt = ex.egt != null;
   // Lo fijo: en un lienzo guardado (si se puede) o directo.
-  const clave = `${ancho}x${alto}|${escala}|${luz}|${Math.round(G.techo)}|${Math.round(G.izq)},${Math.round(G.der)},${Math.round(G.abajo)}|${conEgt ? 1 : 0}|${T('kt')}|${T('rpm')}`;
+  const clave = `${ancho}x${alto}|${escala}|${luz}|${Math.round(G.techo)}|${Math.round(G.izq)},${Math.round(G.der)},${Math.round(G.abajo)}|${G.compacto ? 'c' : ''}|${conEgt ? 1 : 0}|${T('kt')}|${T('rpm')}`;
   const capas = crearLienzo ? capasFijas(crearLienzo, clave, ancho, alto, G, C, escala, T, conEgt) : null;
   if (capas) ctx.drawImage(capas.fondo, 0, 0);
   else fondoFijo(ctx, ancho, alto, G, C, escala, T, conEgt);
@@ -142,6 +152,23 @@ export function dibujarLadoCabina(ctx, ancho, alto, { escala = 1, hora = 'dia', 
   ctx.fillStyle = C.puerta; ctx.fillRect(Math.min(X(0), X(1)), sill, W, alto - sill);
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(Math.min(X(0.1), X(0.7)), sill + (alto - sill) * 0.35, W * 0.6, Math.max(6, (alto - sill) * 0.08));
   ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(Math.min(X(0), X(1)), sill, W, 2 * escala);
+}
+
+// 0.14.121 (el dueño: «en vez de ver la velocidad así, ver el velocímetro… así veo bien la raya roja, blanca y amarilla»): los
+// relojes de la vista de afuera, con el mismo dibujo que la cabina (los mismos arcos): velocidad (con los kt en número), actitud,
+// altímetro y variómetro, en una fila. → { amarillo, rojo } (para avisar con el borde del panel).
+export function dibujarRelojesAfuera(ctx, w, h, datos, { escala = 1, hora = 'dia', textos = {} } = {}) {
+  const D = datosPanel(datos), C = colores(hora === 'noche' ? 'noche' : 'dia'), T = k => textos[k] ?? TEXTOS_CABINA[k];
+  const n = 4, r = Math.min(h / 2.3, w / (n * 2.3)), paso = w / n, y = h / 2;
+  const x = k => paso * (k + 0.5);
+  for (let k = 0; k < n; k++) { ctx.fillStyle = '#5a606b'; ctx.beginPath(); ctx.arc(x(k), y, r * 1.07, 0, Math.PI * 2); ctx.fill(); }
+  caraAnemometro(ctx, x(0), y, r, C, escala, T); agujaSimple(ctx, x(0), y, r, D.agujas.kt, C);
+  ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(x(0) - r * 0.32, y + r * 0.1, r * 0.64, r * 0.26);
+  texto(ctx, String(Math.round(D.kt)), x(0), y + r * 0.23, r * 0.22, '#ffffff', 800);
+  actitud(ctx, x(1), y, r, D, C, escala);
+  caraAltimetro(ctx, x(2), y, r, C, escala, T); vivoAltimetro(ctx, x(2), y, r, { ...D, ajuste: datos.ajuste }, C);
+  caraVariometro(ctx, x(3), y, r, C, escala, T); agujaSimple(ctx, x(3), y, r, agujaVariometro(D.vs), C);
+  return { amarillo: D.kt > ARCOS_KT.verdeHasta && D.kt <= ARCOS_KT.vne, rojo: D.kt > ARCOS_KT.vne };
 }
 
 export const TEXTOS_CABINA = { egt: 'EGT', ff: 'FF', trim: 'TRIM', flaps: 'FLAPS', gases: 'THROTTLE', combustible: 'FUEL SEL', kt: 'KNOTS', ft: 'ALT', vsi: 'VERT SPEED', rpm: 'RPM ×100', psi: 'OIL P', temp: 'OIL T', fuel: 'FUEL', giro: 'TURN COORD', min: '2 MIN', stall: 'STALL', arriba: 'UP', abajo: 'DN', mezcla: 'MIXTURE', calor: 'CARB HEAT' };
@@ -218,6 +245,11 @@ function capasFijas(crearLienzo, clave, ancho, alto, G, C, e, T, conEgt) {
 // Dónde está cada reloj (y su radio) en el Juego.
 function relojes(G, conEgt) {
   const { xs, fila1, fila2, r, xm, ancha, ancho1 } = G;
+  if (G.compacto) {
+    // Una fila: velocidad, actitud, altímetro, coordinador, rumbo, variómetro y el tacómetro (los del motor, en «Componentes»).
+    const y = fila1, x = k => xs[0] + ancho1 * k;
+    return [{ id: 'kt', x: x(0), y, r }, { id: 'actitud', x: x(1), y, r }, { id: 'alt', x: x(2), y, r }, { id: 'giro', x: x(3), y, r }, { id: 'rumbo', x: x(4), y, r }, { id: 'vs', x: x(5), y, r }, { id: 'rpm', x: x(6), y, r: r * 0.92 }];
+  }
   const rc = r * 0.44;
   const lista = [
     { id: 'kt', x: xs[0], y: fila1, r }, { id: 'actitud', x: xs[1], y: fila1, r }, { id: 'alt', x: xs[2], y: fila1, r },
@@ -452,13 +484,13 @@ function agujasVivas(ctx, G, D, C, e, T, ex) {
   o = q('rumbo'); rumboTarjeta(ctx, o.x, o.y, o.r, D, C, e);
   o = q('vs'); agujaSimple(ctx, o.x, o.y, o.r, agujaVariometro(D.vs), C);
   o = q('rpm'); texto(ctx, String(Math.round(D.rpm / 10) * 10), o.x, o.y + o.r * 0.55, o.r * 0.15, C.texto, 700); agujaSimple(ctx, o.x, o.y, o.r, D.agujas.rpm, C);
-  o = q('psi'); agujaChica(ctx, o.x, o.y, o.r, D.agujas.aceitePsi, C);
-  o = q('temp'); agujaChica(ctx, o.x, o.y, o.r, D.agujas.aceiteTemp, C);
-  o = q('fuel'); agujaChica(ctx, o.x, o.y, o.r, D.agujas.combustible, C);
+  o = q('psi'); if (o) agujaChica(ctx, o.x, o.y, o.r, D.agujas.aceitePsi, C);
+  o = q('temp'); if (o) agujaChica(ctx, o.x, o.y, o.r, D.agujas.aceiteTemp, C);
+  o = q('fuel'); if (o) agujaChica(ctx, o.x, o.y, o.r, D.agujas.combustible, C);
   o = q('egt'); if (o) agujaChica(ctx, o.x, o.y, o.r, anguloArco(ex.egt, 1000, 1600), C);
   o = q('vor'); if (o) vivoVor(ctx, o.x, o.y, o.r, D, C);
   // El flujo de combustible (gal/h), debajo del reloj de la EGT.
-  if (ex.egt != null && G.ancha) { const eg = q('egt'); texto(ctx, `${T('ff')} ${num(ex.ff, 0).toFixed(1)}`, eg.x, eg.y + eg.r * 1.45, Math.max(8, eg.r * 0.34), C.texto, 700); }
+  if (ex.egt != null && G.ancha && q('egt')) { const eg = q('egt'); texto(ctx, `${T('ff')} ${num(ex.ff, 0).toFixed(1)}`, eg.x, eg.y + eg.r * 1.45, Math.max(8, eg.r * 0.34), C.texto, 700); }
 }
 
 // La brújula: colgada arriba en el centro del parabrisas; la tarjeta (con N, 3, 6, E…) corre con el rumbo.
