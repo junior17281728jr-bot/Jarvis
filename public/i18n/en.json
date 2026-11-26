@@ -7138,7 +7138,7 @@
   "juego.camara.vuelve": "Camera returns by itself",
   "juego.agl": "Above ground: {ft} ft",
   "juego.agl.boton": "Height above ground",
-  "juego.cabina_real": "3D cockpit",
+  "juego.cabina_real": "3D cockpit (beta)",
   "juego.dano.titulo": "Damage",
   "juego.dano.ninguno": "No damage.",
   "juego.dano.cuantos": "⚠ Damage: {n}",

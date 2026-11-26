@@ -262,7 +262,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const bVuelve = boton('juego-vuelve juego-luz', t('juego.camara.vuelve'), () => { orbitaVuelve = !orbitaVuelve; pintarBotones(); }, { 'aria-pressed': 'false' });
   const bPanelGrande = boton('juego-panel-grande juego-luz', t('juego.panel_grande'), () => { panelGrande = !panelGrande; pintarBotones(); }, { 'aria-pressed': 'false' });
   const bAgl = boton('juego-agl-boton juego-luz', t('juego.agl.boton'), () => { aglModo = !aglVisible(); pintarBotones(); }, { 'aria-pressed': 'false' });
-  const b3d = boton('juego-cabina3d juego-luz', t('juego.cabina_real'), () => { cabina3dOn = !cabina3dOn; pintarBotones(); }, { 'aria-pressed': 'true' });
+  const b3d = boton('juego-cabina3d juego-luz', t('juego.cabina_real'), () => { cabina3dOn = !cabina3dOn; pintarBotones(); }, { 'aria-pressed': 'false' });
   const bTenues = boton('juego-tenues juego-luz', t('juego.mandos_tenues'), () => { mandosTenues = !mandosTenues; pintarBotones(); }, { 'aria-pressed': 'false' });
   const botonesInstr = ['chicos', 'grandes', 'texto'].map(id => boton('juego-instr juego-luz', t(`juego.instrumentos.${id}`), () => { instrumentosAfuera = id; pintarBotones(); }, { 'data-instr': id, 'aria-pressed': 'false' }));
   const bAsistente = boton('juego-asistente juego-luz', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
@@ -510,7 +510,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const fovCabina = () => (ancho < alto ? 74 : deLado() ? 62 : 56);
   // 0.14.124 (el dueño: «la cabina dentro… se ve muy falso»): la cabina 3D (en la escena WebGL, con la misma luz que afuera);
   // sin WebGL, en las mini-clases para mirar o en la repetición, la dibujada. «Cabina 3D» en el Menú.
-  let cabina3dOn = true;
+  let cabina3dOn = false; // (0.14.125: en prueba: apagada al empezar, se elige en el Menú)
   const usa3d = () => Boolean(gl3) && cabina3dOn && !mc?.fov && !repe;
   const MIRADA_3D = 9;
   function medir() {

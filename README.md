@@ -716,6 +716,11 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.125: la cabina dibujada vuelve a ser la de siempre — sin cambio de base
+
+- La cabina 3D de la 0.14.124 queda «en prueba» (Menú → «Cabina 3D (en prueba)», apagada al empezar) hasta que se vea mejor
+  que la dibujada; por defecto, la cabina dibujada de la 0.14.121.
+
 ### Lo nuevo de la 0.14.124: la cabina por dentro en 3D — sin cambio de base
 
 - **La cabina 3D** (el dueño: «la cabina dentro… se ve muy falso, como un jueguito, pero por fuera se ve muy bien»;

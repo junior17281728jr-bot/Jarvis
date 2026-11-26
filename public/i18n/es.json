@@ -7138,7 +7138,7 @@
   "juego.camara.vuelve": "La cámara vuelve sola",
   "juego.agl": "Sobre el suelo: {ft} ft",
   "juego.agl.boton": "Altura sobre el suelo",
-  "juego.cabina_real": "Cabina 3D",
+  "juego.cabina_real": "Cabina 3D (en prueba)",
   "juego.dano.titulo": "Daños",
   "juego.dano.ninguno": "Sin daños.",
   "juego.dano.cuantos": "⚠ Daños: {n}",

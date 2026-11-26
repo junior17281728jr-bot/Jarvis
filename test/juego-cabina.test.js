@@ -503,5 +503,6 @@ test('0.14.124: la cabina 3D (geometría en la escena, con la luz de afuera) y l
   for (const s of ['1,650', '095', 'KNOTS']) assert.ok(ops.some(o => o[0] === 'fillText' && o[1] === s), s);
   const vista = leer('juego-vista.js');
   assert.match(vista, /const usa3d = \(\) => Boolean\(gl3\) && cabina3dOn && !mc\?\.fov && !repe;/);
+  assert.match(vista, /let cabina3dOn = false;/, 'en prueba: apagada al empezar');
   assert.doesNotMatch(leer('clase/cabina3d.js'), /cessna|piper|garmin/i);
 });
