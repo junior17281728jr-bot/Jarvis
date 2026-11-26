@@ -7,7 +7,8 @@ import { crearBucle, prefiereMenosMovimiento } from './clase/comun.js';
 import { crearCamara, ojoOrbita, baseAvion, suma, por, render, crearTexturas, mezclarAngulo, proyectar } from './clase/motor3d.js';
 import { crearRenderGL } from './clase/motor3d-gl.js';
 import { PALETAS } from './clase/e3d-base.js';
-import { dibujarCabina, dibujarLadoCabina, dibujarRelojesAfuera, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
+import { dibujarCabina, dibujarLadoCabina, dibujarRelojesAfuera, dibujarGrieta, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
+import { primitivasCabina3d, relojesCabina3d, baseCabina } from './clase/cabina3d.js';
 import { activarToques, bloquearZoom } from './clase/juego-tactil.js';
 import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua, LIMITES } from './clase/vuelo-modelo.js';
 import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz, ESCALA_AVION, ALTO_RUEDAS } from './clase/juego-mundo.js';
@@ -261,6 +262,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const bVuelve = boton('juego-vuelve juego-luz', t('juego.camara.vuelve'), () => { orbitaVuelve = !orbitaVuelve; pintarBotones(); }, { 'aria-pressed': 'false' });
   const bPanelGrande = boton('juego-panel-grande juego-luz', t('juego.panel_grande'), () => { panelGrande = !panelGrande; pintarBotones(); }, { 'aria-pressed': 'false' });
   const bAgl = boton('juego-agl-boton juego-luz', t('juego.agl.boton'), () => { aglModo = !aglVisible(); pintarBotones(); }, { 'aria-pressed': 'false' });
+  const b3d = boton('juego-cabina3d juego-luz', t('juego.cabina_real'), () => { cabina3dOn = !cabina3dOn; pintarBotones(); }, { 'aria-pressed': 'true' });
   const bTenues = boton('juego-tenues juego-luz', t('juego.mandos_tenues'), () => { mandosTenues = !mandosTenues; pintarBotones(); }, { 'aria-pressed': 'false' });
   const botonesInstr = ['chicos', 'grandes', 'texto'].map(id => boton('juego-instr juego-luz', t(`juego.instrumentos.${id}`), () => { instrumentosAfuera = id; pintarBotones(); }, { 'data-instr': id, 'aria-pressed': 'false' }));
   const bAsistente = boton('juego-asistente juego-luz', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
@@ -294,7 +296,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       el('div', { class: 'juego-hoja-cabeza' }, el('h2', { id: 'juego-hoja-titulo', texto: t('juego.mas') }), bCerrarMenu),
       el('div', { class: 'juego-hoja-cuerpo juego-se-desplaza' },
         el('div', { class: 'juego-hoja-fila' }, bAyuda2, tactil ? bOrientacion : null, bTrafico, bPajaros, bSonido, bVuelve),
-        el('div', { class: 'juego-hoja-fila' }, tactil ? bPanelGrande : null, tactil ? bTenues : null, bAgl),
+        el('div', { class: 'juego-hoja-fila' }, tactil ? bPanelGrande : null, tactil ? bTenues : null, bAgl, b3d),
         tituloHoja('juego.dano.titulo'), danosMenu,
         tituloHoja('juego.instrumentos'), el('div', { class: 'juego-hoja-fila' }, botonesInstr),
         tituloHoja('juego.menu.hora'), el('div', { class: 'juego-hoja-fila' }, botonesHora),
@@ -506,6 +508,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const deLado = () => tactil && horizontal() && alto / Math.max(1, escalaPx) <= 500;
   const cabinaCompacta = () => deLado() && !panelGrande;
   const fovCabina = () => (ancho < alto ? 74 : deLado() ? 62 : 56);
+  // 0.14.124 (el dueño: «la cabina dentro… se ve muy falso»): la cabina 3D (en la escena WebGL, con la misma luz que afuera);
+  // sin WebGL, en las mini-clases para mirar o en la repetición, la dibujada. «Cabina 3D» en el Menú.
+  let cabina3dOn = true;
+  const usa3d = () => Boolean(gl3) && cabina3dOn && !mc?.fov && !repe;
+  const MIRADA_3D = 9;
   function medir() {
     const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, tactil ? 1.6 : 2) * calidad;
     const w = lienzo.clientWidth || 640, hh = lienzo.clientHeight || 400;
@@ -515,6 +522,20 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   }
   function camara() {
     const pos = posicionAvion(avion);
+    if (vista === 'cabina' && usa3d()) {
+      // 0.14.124: desde el asiento izquierdo de la cabina 3D, mirando un poco hacia abajo (se ve el tablero y el horizonte).
+      const fov = ancho < alto ? 74 : deLado() ? 64 : 58;
+      const B = baseCabina(pos, avion.rumbo, avion.cabeceo, avion.alabeo), bv = baseAvion(avion.rumbo, avion.cabeceo - MIRADA_3D - (reserva.abajo * escalaPx / Math.max(1, alto)) * fov * 0.75, avion.alabeo);
+      const turb = tiempo < rafagaHasta ? 1 : Math.min(1, turbLeve * 2.5);
+      const rueda = avion.enSuelo && avion.kt > 1 && !avion.agua ? Math.min(1, avion.kt / 45) * (Math.sin(tiempo * 23.3) * 0.6 + Math.sin(tiempo * 37.1) * 0.4) * 0.00003 : 0;
+      const metaY = reducir ? 0 : -Math.max(-0.5, Math.min(2, (avion.g ?? 1) - 1)) * 0.00012 + turb * Math.sin(tiempo * 9.1) * 0.00008 + rueda;
+      const metaX = reducir ? 0 : turb * Math.sin(tiempo * 6.3 + 1) * 0.00008;
+      cabeza = { y: cabeza.y + (metaY - cabeza.y) * 0.15, x: cabeza.x + (metaX - cabeza.x) * 0.15 };
+      const ojo = suma(suma(B.ojo, por(bv.U, cabeza.y)), por(bv.R, cabeza.x));
+      const yw = (orbita.cabYaw * Math.PI) / 180, pt = (orbita.cabPitch * Math.PI) / 180;
+      const dir = suma(suma(por(bv.F, Math.cos(yw) * Math.cos(pt)), por(bv.R, Math.sin(yw) * Math.cos(pt))), por(bv.U, Math.sin(pt)));
+      return crearCamara({ ojo, mira: suma(ojo, dir), arriba: bv.U, fov, cerca: 0.0004 });
+    }
     if (vista === 'cabina') {
       // Desde el asiento: un poco arriba del centro, mirando por la nariz (algo hacia abajo, para ver el horizonte sobre el tablero).
       // (en las mini-clases para mirar, una vista acercada: la pista, el PAPI y las luces de lejos se distinguen)
@@ -597,7 +618,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     medir();
     const cam = r ? r.cam : camara();
     const prims = r ? [...primitivasRepeticion(repe, r.t, { conPropio: r.toma !== 'cabina', conCaminos: r.toma !== 'cabina', toma: r.toma }), ...repeNube]
-      : vista === 'afuera' ? avionPropio(avion, { t: tiempo, yugo: mandosAhora(), luces: lucesDe(avion), reducir }) : [];
+      : vista === 'afuera' ? avionPropio(avion, { t: tiempo, yugo: mandosAhora(), luces: lucesDe(avion), reducir })
+      : usa3d() ? primitivasCabina3d({ pos: posicionAvion(avion), rumbo: avion.rumbo, cabeceo: avion.cabeceo, alabeo: avion.alabeo, yugo: mandosAhora(), potencia: mandos.potencia, mezcla: avion.pist?.mezcla ?? 1, hora }) : [];
     // 0.14.105: la luz de aterrizaje y la de rodaje (de noche se ve la pista iluminada), también desde la cabina.
     if (!r) { const la = lucesActivas(avion.pist ?? { master: true }); prims.push(...luzAterrizaje(avion, { aterrizaje: la.aterrizaje, rodaje: la.rodaje, suelo: alturaSuelo(avion.x, avion.z) }).filter(q => vista === 'afuera' || q.t !== 's')); }
     if (!r) prims.push(...lucesDinamicas(cam.ojo));
@@ -612,13 +634,23 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // (0.14.122: la bruma empieza más cerca y sube despacio: el suelo cercano nítido, el lejano más claro y apagado)
     const niebla = dentro ? { color: [200, 204, 212], inicio: 0, fin: 0.35 } : { color: gris, inicio: Math.min(6, cond.visibilidad * 0.12), fin: Math.min(62, cond.visibilidad) };
     const sol = solDe(hora);
-    if (gl3) gl3.render({ paleta: p, fijas: [mundo, mundoLuces, extras, nubesTiempo], prims, niebla, sol, lejos: 300, texturaEscala: 0.35 }, cam, ancho, alto, { escala: escalaPx });
+    if (gl3) gl3.render({ paleta: p, fijas: [mundo, mundoLuces, extras, nubesTiempo], prims, niebla, sol, lejos: 300, texturaEscala: 0.35, cercaMin: vista === 'cabina' && usa3d() && !r ? 0.0004 : undefined }, cam, ancho, alto, { escala: escalaPx });
     else if (ctx2d) render(ctx2d, { paleta: p, prims: [...mundo, ...mundoLuces, ...extras, ...nubesTiempo, ...prims], etiquetas: [], niebla, sol, ambiente: p.ambiente }, cam, ancho, alto, { escala: escalaPx, texturas });
     if (!ctx) return;
     ctx.clearRect(0, 0, ancho, alto);
     if (cond.lluvia > 0.05 && !dentroSuelo()) pintarLluvia(cond.lluvia);
     let techo = alto;
-    if (vista === 'cabina') {
+    if (vista === 'cabina' && usa3d() && !r) {
+      // 0.14.124: la cabina 3D: los relojes vivos donde cae cada uno del tablero; el parabrisas rajado; el G y el STALL.
+      const L = lecturas({ ...avion, vs: indicado?.vs ?? avion.vs, ft: indicado?.ft ?? avion.ft });
+      efectosVentana(ctx);
+      const res = relojesCabina3d(ctx, cam, ancho, alto, { pos: posicionAvion(avion), rumbo: avion.rumbo, cabeceo: avion.cabeceo, alabeo: avion.alabeo, datos: L, escala: escalaPx, hora, textos: TEXTOS_PANEL(t), extras: { ajuste } });
+      techo = res.techo;
+      if (avion.danos?.parabrisas) dibujarGrieta(ctx, ancho * 0.62, alto * 0.32, Math.min(ancho, alto) * 0.28, escalaPx);
+      const chip3d = (s, x, y, fondo, color) => { ctx.font = `800 ${13 * escalaPx}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; const w = ctx.measureText(s).width + 14 * escalaPx; ctx.fillStyle = fondo; ctx.fillRect(x - w / 2, y - 11 * escalaPx, w, 22 * escalaPx); ctx.fillStyle = color; ctx.fillText(s, x, y); };
+      if (!avion.enSuelo && avion.g != null) chip3d(`G ${(avion.g ?? 1).toFixed(1)}`, ancho * 0.5, techo - 18 * escalaPx, 'rgba(0,0,0,0.55)', avion.g > 2.5 || avion.g < 0 ? '#ff8278' : '#ffffff');
+      if (L.aviso || avion.aviso) chip3d(t('juego.panel.stall'), ancho * 0.5, techo + 14 * escalaPx, '#e5483e', '#ffffff');
+    } else if (vista === 'cabina') {
       // Los relojes con su retraso de verdad (el variómetro sigue la tendencia).
       const L = lecturas({ ...avion, vs: indicado?.vs ?? avion.vs, ft: indicado?.ft ?? avion.ft });
       // La vibración del motor (muy poca) y la de la turbulencia.
@@ -1538,6 +1570,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     bFrenoMano.setAttribute('aria-pressed', String(Boolean(mandos.frenoMano)));
     bVuelve.setAttribute('aria-pressed', String(orbitaVuelve));
     bAgl.setAttribute('aria-pressed', String(aglVisible()));
+    b3d.setAttribute('aria-pressed', String(cabina3dOn));
     bPajaros.setAttribute('aria-pressed', String(pajarosOn));
     bPanelGrande.setAttribute('aria-pressed', String(panelGrande)); bTenues.setAttribute('aria-pressed', String(mandosTenues));
     raiz.setAttribute('data-tenues', mandosTenues ? '1' : '0');

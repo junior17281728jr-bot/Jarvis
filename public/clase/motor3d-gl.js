@@ -350,7 +350,8 @@ export function crearRenderGL(lienzo) {
     render(escena, cam, ancho, alto, opciones = {}) {
       const escala = opciones.escala ?? 1;
       gl.viewport(0, 0, ancho, alto);
-      const lejos = escena.lejos ?? 3000, cerca = Math.max(cam.cerca, lejos / 2e5);
+      // (0.14.124: la cabina 3D necesita el plano cercano a ~0.4 ft: escena.cercaMin)
+      const lejos = escena.lejos ?? 3000, cerca = Math.max(cam.cerca, escena.cercaMin ?? lejos / 2e5);
       const V = matrizVista(cam), Pm = matrizPerspectiva(cam.fov, ancho / alto, cerca, lejos), VP = multiplicar(Pm, V);
       const pal = escena.paleta, sol = escena.sol ?? [-0.4, 0.8, -0.45];
       const sl = Math.hypot(...sol), S = sol.map(v => v / sl);

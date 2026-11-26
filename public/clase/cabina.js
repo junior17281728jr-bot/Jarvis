@@ -172,6 +172,26 @@ export function dibujarRelojesAfuera(ctx, w, h, datos, { escala = 1, hora = 'dia
   return { amarillo: D.kt > ARCOS_KT.verdeHasta && D.kt <= ARCOS_KT.vne, rojo: D.kt > ARCOS_KT.vne };
 }
 
+// 0.14.124: un reloj suelto, con su caja, la cara, lo vivo y el vidrio (para la cabina 3D: se dibuja donde cae el tablero
+// de verdad en la pantalla). id: 'kt' | 'actitud' | 'alt' | 'giro' | 'rumbo' | 'vs' | 'rpm' | 'fuel'.
+export function relojVivo(ctx, id, x, y, r, datos, { escala = 1, hora = 'dia', textos = {}, extras = {}, caja = true } = {}) {
+  const D = datosPanel(datos), C = colores(hora === 'noche' || hora === 'atardecer' ? hora : 'dia'), T = k => textos[k] ?? TEXTOS_CABINA[k], e = escala;
+  if (caja) cajaReloj(ctx, x, y, r, C, e);
+  if (C.luz === 'noche') lucecita(ctx, x, y, r);
+  if (id === 'kt') { caraAnemometro(ctx, x, y, r, C, e, T); agujaSimple(ctx, x, y, r, D.agujas.kt, C); }
+  else if (id === 'actitud') actitud(ctx, x, y, r, D, C, e);
+  else if (id === 'alt') { caraAltimetro(ctx, x, y, r, C, e, T); vivoAltimetro(ctx, x, y, r, { ...D, ajuste: extras.ajuste }, C); }
+  else if (id === 'giro') { caraCoordinador(ctx, x, y, r, C, e, T); vivoCoordinador(ctx, x, y, r, D, C); }
+  else if (id === 'rumbo') rumboTarjeta(ctx, x, y, r, D, C, e);
+  else if (id === 'vs') { caraVariometro(ctx, x, y, r, C, e, T); agujaSimple(ctx, x, y, r, agujaVariometro(D.vs), C); }
+  else if (id === 'rpm') { caraTacometro(ctx, x, y, r, C, e, T); texto(ctx, String(Math.round(D.rpm / 10) * 10), x, y + r * 0.55, r * 0.15, C.texto, 700); agujaSimple(ctx, x, y, r, D.agujas.rpm, C); }
+  else if (id === 'fuel') { caraChico(ctx, x, y, r, T('fuel'), C, e, [[0, 0.12, '#e5c33e']], ['E', 'F']); agujaChica(ctx, x, y, r, D.agujas.combustible, C); }
+  // El vidrio: un reflejo suave arriba a la izquierda.
+  const g = ctx.createLinearGradient(x - r, y - r, x + r * 0.2, y + r * 0.1);
+  g.addColorStop(0, `rgba(255,255,255,${C.luz === 'noche' ? 0.04 : 0.12})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, Math.PI * 0.75, Math.PI * 1.9); ctx.closePath(); ctx.fill();
+}
+
 export const TEXTOS_CABINA = { egt: 'EGT', ff: 'FF', trim: 'TRIM', flaps: 'FLAPS', gases: 'THROTTLE', combustible: 'FUEL SEL', kt: 'KNOTS', ft: 'ALT', vsi: 'VERT SPEED', rpm: 'RPM ×100', psi: 'OIL P', temp: 'OIL T', fuel: 'FUEL', giro: 'TURN COORD', min: '2 MIN', stall: 'STALL', arriba: 'UP', abajo: 'DN', mezcla: 'MIXTURE', calor: 'CARB HEAT' };
 
 // ---------- la cabina de las clases (más baja: solo los seis básicos) ----------
@@ -496,7 +516,9 @@ function agujasVivas(ctx, G, D, C, e, T, ex) {
 
 // 0.14.123: el parabrisas rajado por un pájaro: el golpe (blanco, opaco), las grietas en estrella y un velo alrededor.
 function grieta(ctx, G, e, k) {
-  const x = G.izq + G.anchoUtil * 0.62, y = G.techo + (G.yp - G.techo) * 0.38, R = Math.min(G.anchoUtil, G.yp - G.techo) * 0.42 * Math.min(1, k);
+  dibujarGrieta(ctx, G.izq + G.anchoUtil * 0.62, G.techo + (G.yp - G.techo) * 0.38, Math.min(G.anchoUtil, G.yp - G.techo) * 0.42 * Math.min(1, k), e);
+}
+export function dibujarGrieta(ctx, x, y, R, e = 1) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, R);
   g.addColorStop(0, 'rgba(235,240,245,0.55)'); g.addColorStop(0.35, 'rgba(220,226,232,0.22)'); g.addColorStop(1, 'rgba(220,226,232,0)');
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();

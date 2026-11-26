@@ -716,6 +716,18 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.124: la cabina por dentro en 3D — sin cambio de base
+
+- **La cabina 3D** (el dueño: «la cabina dentro… se ve muy falso, como un jueguito, pero por fuera se ve muy bien»;
+  `clase/cabina3d.js`): geometría de verdad en la misma escena WebGL y con la misma luz del sol y del cielo que el avión de
+  afuera: el tablero mate con la sombra de la visera, la visera curva, los parantes y el marco del parabrisas, el techo
+  tapizado con los parasoles, la brújula, las puertas con sus ventanas, el ala vista desde abajo y el montante, los asientos,
+  los dos yugos (giran con el alabeo y se acercan al tirar), las perillas de potencia y mezcla y las radios. Se mira en
+  perspectiva real desde el asiento izquierdo y con la cámara libre (girar la cabeza muestra el ala y la puerta). Los relojes
+  vivos se dibujan donde cae cada uno del tablero (`relojVivo`). De noche, la luz roja de la visera. Sin WebGL, en las
+  mini-clases para mirar o en la repetición, la cabina dibujada de antes; Menú → «Cabina 3D» para volver a ella.
+- Pruebas: `test/juego-cabina.test.js`.
+
 ### Lo nuevo de la 0.14.123: los daños poco a poco y los pájaros — sin cambio de base
 
 - **Los daños** (el dueño: «en un choque pequeño… deja de funcionar; tiene que ser como en la vida real»; `clase/juego-danos.js`):

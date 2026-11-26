@@ -480,3 +480,28 @@ test('0.14.123: los daños poco a poco (no «se acabó»), los pájaros y la min
   dibujarCabina(ctx, 1000, 600, datos(), { escala: 1, completo: true, extras: { ...EX, grieta: 1 } });
   assert.ok(ops.filter(o => o[0] === 'lineTo').length > 40, 'las grietas');
 });
+
+test('0.14.124: la cabina 3D (geometría en la escena, con la luz de afuera) y los relojes vivos sobre su tablero', async () => {
+  const C3 = await import('../public/clase/cabina3d.js');
+  const { crearCamara, suma, baseAvion } = await import('../public/clase/motor3d.js');
+  const pos = [0.5, 1.5, -6], arg = { pos, rumbo: 30, cabeceo: 2, alabeo: 10, yugo: { alabeo: 0, cabeceo: 0 }, potencia: 0.5 };
+  const p = C3.primitivasCabina3d(arg);
+  assert.ok(p.length > 100 && p.length < 800, `piezas: ${p.length}`);
+  assert.ok(p.every(q => q.t === 'p' && q.p.every(v => v.every(Number.isFinite))));
+  assert.ok(p.filter(q => (q.luz ?? 1) > 0).length > p.length * 0.8, 'con la luz de la escena (no colores planos)');
+  // El yugo gira y se acerca; la potencia mete la perilla.
+  const centro = ps => ps.flatMap(q => q.p).reduce((s, v) => [s[0] + v[0], s[1] + v[1], s[2] + v[2]], [0, 0, 0]);
+  const a = centro(C3.primitivasCabina3d({ ...arg, yugo: { alabeo: 1, cabeceo: 1 } })), b = centro(C3.primitivasCabina3d(arg));
+  assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 1e-6);
+  // Los relojes vivos: donde cae el tablero, con radios parecidos y sin NaN.
+  const B = C3.baseCabina(pos, 30, 2, 10), bv = baseAvion(30, 2 - 9, 10);
+  const cam = crearCamara({ ojo: B.ojo, mira: suma(B.ojo, bv.F), arriba: bv.U, fov: 58, cerca: 0.0004 });
+  const { ctx, ops, numeros } = contexto();
+  const r = C3.relojesCabina3d(ctx, cam, 1280, 720, { ...arg, datos: datos(), escala: 1 });
+  assert.ok(r.techo > 200 && r.techo < 720, `el tablero empieza a ${r.techo.toFixed(0)} px`);
+  assert.ok(numeros().every(Number.isFinite));
+  for (const s of ['1,650', '095', 'KNOTS']) assert.ok(ops.some(o => o[0] === 'fillText' && o[1] === s), s);
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /const usa3d = \(\) => Boolean\(gl3\) && cabina3dOn && !mc\?\.fov && !repe;/);
+  assert.doesNotMatch(leer('clase/cabina3d.js'), /cessna|piper|garmin/i);
+});
