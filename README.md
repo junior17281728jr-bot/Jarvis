@@ -716,6 +716,22 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.120: la tormenta, las ráfagas aparte y el avión que vuela como el de verdad — sin cambio de base
+
+- **Tormenta** (Menú → Tiempo): nubes bajas y oscuras, lluvia fuerte, rayos (uno cada 3 s o más; con «menos movimiento», una
+  claridad suave sin destello) con el trueno después (si el sonido está encendido), ráfagas, turbulencia fuerte y corrientes
+  que suben y bajan al avión (`corrienteVertical`, hasta ±1,500 ft/min), poca visibilidad. El aviso: en la vida real, 20 NM
+  como mínimo (`TIEMPO_FAA.tormenta`, AIM 7-1-26, como en las escenas 3D de las tormentas).
+- **Ráfagas aparte**: un interruptor que sirve con cualquier viento y cualquier tiempo (`rafagaDe`), y el viento como en el
+  METAR en el panel de información («Viento 270° 12G20 kt», `vientoTexto`).
+- **El avión como el de verdad** (`vuelo-modelo.js`): sin el Asistente, sin topes de alabeo (se puede dar la vuelta) y de ±85°
+  de cabeceo; la sustentación inclinada en el viraje (sin tirar baja y la nariz cae; `tasaConCarga` más allá de 60°); el
+  factor de carga en vivo (G) y la pérdida acelerada; en picada la velocidad crece sola. Los límites (`LIMITES`): +3.8 / −1.52 G
+  (categoría normal) y la VNE de 163 kt avisan; sin el Asistente, 1.5 veces el límite de G, 180 kt u 8 s sobre la VNE terminan
+  con «Se dañó la estructura» y su explicación (PHAK cap. 5 y 8 · 14 CFR 23.303 · 23.337). Boca abajo o con G negativos el motor
+  tose (el carburador por gravedad). Con el Asistente, igual de fácil que antes (y no deja pasar de ~3.3 G: `alfaParaCarga`).
+- Pruebas: `test/juego-cabina.test.js`.
+
 ### Lo nuevo de la 0.14.119: el paisaje en toda la pantalla y la cámara libre — sin cambio de base
 
 - **En el teléfono la escena ocupa toda la pantalla** (el dueño: «no se ve el fondo… ahí deja ver el fondo»): los mandos ya no

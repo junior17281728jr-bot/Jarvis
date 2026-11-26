@@ -6,8 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dibujarCabina, dibujarLadoCabina, geometriaCabina, posicionesAbajo, FLAPS_GRADOS, flapsAGrados } from '../public/clase/cabina.js';
-import { crearAvion, pasoVuelo, sustentacion, lecturas, VUELO, alfaNivel } from '../public/clase/vuelo-modelo.js';
-import { TIEMPOS, TIEMPO_FAA, condiciones, nivelTurbulencia, mangaDeViento, nubesDe, MANGA } from '../public/clase/juego-tiempo.js';
+import { crearAvion, pasoVuelo, sustentacion, lecturas, VUELO, alfaNivel, LIMITES, tasaConCarga, invertido, alfaParaCarga, perdidaConCarga, juzgarAterrizaje } from '../public/clase/vuelo-modelo.js';
+import { TIEMPOS, TIEMPO_FAA, condiciones, nivelTurbulencia, mangaDeViento, nubesDe, MANGA, corrienteVertical, rafagaDe, vientoTexto } from '../public/clase/juego-tiempo.js';
 import { contenidoSinZoom, bloquearZoom, activarToques, SELECTOR_TOQUE } from '../public/clase/juego-tactil.js';
 import { siguienteFlaps, anteriorFlaps, vientoConRafagas, VIENTO_RUMBOS, VIENTO_KT, miradaCabina, ORBITA, orbitaInicial, orbitaCentrada, arrastrarOrbita, zoomOrbita, aplicarOrbita, orbitarOjo, volverOrbita } from '../public/juego-vista.js';
 import { ojoOrbita } from '../public/clase/motor3d.js';
@@ -132,10 +132,11 @@ test('el viento a mano: 8 rumbos y de 0 a 25 kt; las ráfagas suben y bajan (has
   assert.deepEqual(VIENTO_RUMBOS.map(r => r[0]), [360, 45, 90, 135, 180, 225, 270, 315]);
   assert.deepEqual([...VIENTO_KT], [0, 5, 10, 15, 20, 25]);
   let min = 99, max = 0;
-  for (let t = 0; t < 120; t += 0.1) { const v = vientoConRafagas({ desde: 270, kt: 10, rafagas: true }, t); min = Math.min(min, v.kt); max = Math.max(max, v.kt); assert.equal(v.desde, 270); }
-  assert.ok(min >= 10 - 1e-9 && max <= 16 + 1e-9 && max > 14);
-  assert.equal(vientoConRafagas({ desde: 90, kt: 12, rafagas: false }, 5).kt, 12);
-  assert.deepEqual(vientoConRafagas(null, 0), { desde: 360, kt: 0 });
+  for (let t = 0; t < 120; t += 0.1) { const v = vientoConRafagas({ desde: 270, kt: 10 }, 18, t); min = Math.min(min, v.kt); max = Math.max(max, v.kt); assert.equal(v.desde, 270); }
+  assert.ok(min >= 10 - 1e-9 && max <= 18 + 1e-9 && max > 16);
+  assert.equal(vientoConRafagas({ desde: 90, kt: 12 }, 12, 5).kt, 12);
+  assert.equal(vientoConRafagas({ desde: 90, kt: 12 }, 5, 5).kt, 12, 'nunca por debajo del parejo');
+  assert.deepEqual(vientoConRafagas(null, 0, 0), { desde: 360, kt: 0 });
   // La manga: apunta hacia donde va el viento, llena con 15 kt, colgando sin viento.
   const punta = v => mangaDeViento(v, 0).at(-1).p;
   const del_oeste = punta({ desde: 270, kt: 20 });
@@ -264,4 +265,84 @@ test('0.14.119: la escena ocupa toda la pantalla en el teléfono y los mandos fl
   const pie = geometriaCabina(624, 1350, { escala: 1.6, reserva: { abajo: 400 } });
   assert.ok(pie.tira + pie.alto1 / 2 <= 1350 - 400 + 1, 'de pie: el tablero termina encima de los mandos');
   assert.ok(sin.ancha !== undefined);
+});
+
+test('0.14.119: la Tormenta (rayos, lluvia fuerte, turbulencia, ráfagas, corrientes, poca visibilidad; 20 NM, AIM 7-1-26)', () => {
+  assert.ok(TIEMPOS.includes('tormenta'));
+  assert.equal(TIEMPO_FAA.tormenta.evitarNM, 20); assert.match(TIEMPO_FAA.tormenta.fuente, /AIM 7-1-26/);
+  const c = condiciones('tormenta', 0, 0, 1500), dentro = condiciones('tormenta', 0, 0, 3000);
+  assert.ok(c.rayos && c.lluvia === 1 && c.turbulencia > 0.8 && c.viento.rafagas > c.viento.kt && c.visibilidad < 10 && c.gris > 0.8);
+  assert.ok(dentro.dentro && dentro.turbulencia > c.turbulencia, 'dentro de la nube: sin horizonte y más turbulencia');
+  assert.ok(nivelTurbulencia(c, { ft: 1500 }) > nivelTurbulencia(condiciones('nubes', 0, 0, 1500), { ft: 1500 }) + 0.5);
+  let max = 0, min = 0;
+  for (let t = 0; t < 200; t += 0.5) { const v = corrienteVertical('tormenta', t, 0.3, -2); max = Math.max(max, v); min = Math.min(min, v); }
+  assert.ok(max > 800 && min < -800 && max <= 1500 && min >= -1500, 'sube y baja hasta ±1,500 ft/min');
+  assert.equal(corrienteVertical('despejado', 10, 0, 0), 0);
+  assert.ok(nubesDe('tormenta').length > 100);
+  // Los textos: el consejo de la vida real (20 NM) en los dos idiomas.
+  const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
+  assert.match(es['juego.tiempo.tormenta.texto'], /20 NM/); assert.match(en['juego.tiempo.tormenta.texto'], /20 NM/);
+  // Los rayos: uno cada 3 s o más (nunca más de 3 por segundo) y, con «menos movimiento», sin destello.
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /proximoRayo = tiempo \+ 3 \+/);
+  assert.match(vista, /if \(reducir\) \{ ctx\.fillStyle = `rgba\(230,236,255/);
+});
+
+test('0.14.119: las ráfagas como interruptor aparte, con cualquier viento; el viento como en el METAR («270° 12G20 kt»)', () => {
+  assert.equal(rafagaDe(12, false), 12);
+  assert.equal(rafagaDe(12, true), 20);
+  assert.equal(rafagaDe(25, true), 40);
+  assert.equal(rafagaDe(0, true), 8, 'también con calma: ráfagas de hasta 8 kt');
+  assert.equal(vientoTexto(270, 12, 20), '270° 12G20 kt');
+  assert.equal(vientoTexto(360, 8, 8), '360° 8 kt');
+  assert.equal(vientoTexto(0, 5), '360° 5 kt');
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /rafagasOn = !rafagasOn/);
+  assert.match(vista, /rafagaKt = rafagasOn \? rafagaDe\(base\.kt, true\)/);
+});
+
+test('0.14.119: el avión como el de verdad: sin topes sin el Asistente, el factor de carga, la pérdida acelerada, la VNE y el motor boca abajo', () => {
+  const volar = (a, m, seg, op) => { for (let i = 0; i < seg * 60; i++) a = pasoVuelo(a, typeof m === 'function' ? m(a) : m, 1 / 60, op); return a; };
+  const crucero = (extra = {}) => ({ ...crearAvion({ ft: 5000, kt: 110, potencia: 0.75, enSuelo: false }), ...extra });
+  // Sin el Asistente se puede alabear más allá de 90° (y dar la vuelta); con él, 30° como siempre.
+  const sin = volar(crucero(), { alabeo: 1, potencia: 0.75 }, 3);
+  assert.ok(Math.abs(sin.alabeo) > 100, `sin Asistente, rola (${sin.alabeo.toFixed(0)}°)`);
+  const con = volar(crucero(), { alabeo: 1, potencia: 0.75 }, 3, { asistente: true });
+  assert.ok(Math.abs(con.alabeo) <= VUELO.maxAlabeoAsistente + 1e-9);
+  // Un viraje de 60° sin tirar: baja y la nariz cae.
+  const v60 = volar(crucero({ alabeo: 60 }), { potencia: 0.75 }, 6);
+  assert.ok(v60.ft < 5000 - 100 && v60.cabeceo < -3 && v60.kt > 112, `sin tirar, baja y acelera (${v60.ft.toFixed(0)} ft, ${v60.cabeceo.toFixed(1)}°, ${v60.kt.toFixed(0)} kt)`);
+  // Tirando en el viraje de 60° (manteniendo la altura) el factor de carga es ~1/cos 60° = 2 G.
+  const sost = volar(crucero({ alabeo: 60, kt: 110 }), a => ({ potencia: 1, cabeceo: Math.max(-1, Math.min(1, (-a.vs) / 400)) }), 8);
+  assert.ok(sost.g > 1.6 && sost.g < 2.6, `n ≈ 2 (${sost.g.toFixed(2)})`);
+  assert.ok(Math.abs(tasaConCarga(60, 110, 2) - tasaConCarga(60, 110, 1) * 2) < 1e-9);
+  // La pérdida acelerada: con n = 2, la pérdida a 48·√2 ≈ 68 kt.
+  assert.ok(Math.abs(perdidaConCarga(2) - 48 * Math.SQRT2) < 1e-9);
+  // Picada: la velocidad crece sola (la energía); pasa la VNE si se insiste.
+  const pic = volar(crucero({ cabeceo: -30, gamma: -0.5 }), { potencia: 1, cabeceo: -0.3 }, 12);
+  assert.ok(pic.kt > LIMITES.vneKt, `en picada pasa la VNE (${pic.kt.toFixed(0)} kt)`);
+  // Los límites: +3.8 / −1.52 G (normal), 1.5 de seguridad, VNE 163 kt.
+  assert.deepEqual([LIMITES.gMax, LIMITES.gMin, LIMITES.seguridad, LIMITES.vneKt], [3.8, -1.52, 1.5, 163]);
+  // Con el Asistente, tirar fuerte a 155 kt no pasa de ~3.3 G (quien empieza no rompe el avión).
+  let a = crucero({ kt: 155 }), gMax = 0;
+  for (let i = 0; i < 4 * 60; i++) { a = pasoVuelo(a, { cabeceo: 1, potencia: 1 }, 1 / 60, { asistente: true }); gMax = Math.max(gMax, a.g); }
+  assert.ok(gMax < LIMITES.gMax, `Asistente: ${gMax.toFixed(2)} G`);
+  assert.ok(alfaParaCarga(3.3, 130) < 12);
+  // Sin el Asistente, el mismo tirón pasa el límite.
+  let b = crucero({ kt: 155 }), gB = 0;
+  for (let i = 0; i < 4 * 60; i++) { b = pasoVuelo(b, { cabeceo: 1, potencia: 1 }, 1 / 60); gB = Math.max(gB, b.g); }
+  assert.ok(gB > LIMITES.gMax, `sin Asistente: ${gB.toFixed(2)} G`);
+  // Boca abajo el motor tose (el carburador por gravedad) y empuja poco.
+  assert.ok(invertido({ alabeo: 180, cabeceo: 0, enSuelo: false }) && !invertido({ alabeo: 20, cabeceo: 5, enSuelo: false }));
+  const boca = volar(crucero({ alabeo: 180 }), { potencia: 1, alabeo: 0 }, 1);
+  assert.ok(boca.tose && boca.rugido > 0.5);
+  // La pantalla: avisos (G, VNE, tose) y la consecuencia «estructura» (solo sin el Asistente).
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /function limitesPaso\(dt\)/);
+  assert.match(vista, /if \(!asistente && \(g > L\.gMax \* L\.seguridad \|\| g < L\.gMin \* L\.seguridad\)\) return roto\('sobrecarga'/);
+  assert.match(vista, /if \(!asistente && \(avion\.kt > L\.vneRompeKt \|\| vneS > L\.vneSeg\)\) return roto\('vne'/);
+  const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
+  for (const k of ['juego.limite.g', 'juego.limite.vne', 'juego.limite.tose', 'juego.res.estructura', 'juego.res.consejo.sobrecarga', 'juego.res.consejo.vne']) assert.ok(es[k] && en[k], k);
+  // Los jueces del aterrizaje, iguales.
+  assert.equal(juzgarAterrizaje({ kt: 60, vs: -200, alabeo: 0, costado: 5, dentro: true }).nivel, 'bueno');
 });

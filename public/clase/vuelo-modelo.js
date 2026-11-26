@@ -16,7 +16,8 @@ export const VUELO = Object.freeze({
   rpmMax: 2700, rpmRalenti: 700,
   aceitePsiNormal: 60, aceiteTempNormal: 185, // psi y °F en verde
   combustibleGal: 40, consumoGph: 8.5,
-  maxAlabeoAsistente: 30, maxAlabeo: 65,
+  maxAlabeoAsistente: 30, maxAlabeo: 180, // (0.14.119: sin el Asistente, sin tope: se puede alabear como en el de verdad)
+  maxCabeceoAsistente: 35, maxCabeceo: 85,
   ftPorUnidad: 1000,
 });
 const G_KTS = 19.06; // g en nudos por segundo
@@ -26,6 +27,20 @@ const grad = r => (r * 180) / Math.PI;
 const lim = (x, a, b) => Math.min(b, Math.max(a, x));
 const norm360 = g => ((g % 360) + 360) % 360;
 const hacia = (a, b, paso) => (Math.abs(b - a) <= paso ? b : a + Math.sign(b - a) * paso);
+const n180 = g => ((((g % 360) + 540) % 360) - 180);
+// 0.14.119 (el dueño: «si quiero hacer giro puedo como en la vida real, solo que el avión actúe como en la vida real»): los
+// límites de la estructura y de velocidad de un avión de categoría normal: +3.8 G (lo que dice la clase de la pérdida y el
+// factor de carga) y −0.4 de eso (14 CFR 23.337); se rompe con 1.5 veces el límite (el factor de seguridad, 14 CFR 23.303).
+// La VNE es la raya roja del anemómetro (163 kt, ARCOS_KT de cabina.js). Boca abajo (o con G negativos) el carburador, que
+// recibe la nafta por gravedad, se queda sin combustible: el motor tose y casi no empuja.
+export const LIMITES = Object.freeze({ gMax: 3.8, gMin: -1.52, seguridad: 1.5, vneKt: 163, vneRompeKt: 180, vneSeg: 8, fuente: 'PHAK cap. 5 · 14 CFR 23.303 · 14 CFR 23.337' });
+// La tasa de viraje (°/s) con la sustentación inclinada: g·n·sen(alabeo)/V (en un viraje nivelado n = 1/cos: g·tan/V).
+export function tasaConCarga(alabeo, kt, n) {
+  const v = Math.max(kt, 30) * KT_FTS;
+  return grad((32.174 * n * Math.sin(rad(alabeo))) / v);
+}
+// ¿Boca abajo o con G negativos? (el motor con carburador se queda sin combustible)
+export const invertido = a => !a.enSuelo && (Math.cos(rad(a.alabeo ?? 0)) * Math.cos(rad(a.cabeceo ?? 0)) < -0.2 || (a.g ?? 1) < 0.1);
 
 // La pista del aeropuerto del juego (la 36): centro, rumbo, largo y ancho en pies.
 export const PISTA = Object.freeze({ x: 0, z: 0, rumbo: 360, largoFt: 4000, anchoFt: 75, nombre: '36', id: 'A' });
@@ -86,6 +101,13 @@ export function sustentacion(alfa, flaps = 0) {
   return cmax * lim(1 - (alfa - VUELO.alfaPerdida) * 0.06, 0.55, 1);
 }
 
+// 0.14.119: el ángulo de ataque que da un factor de carga n a una velocidad (para el tope del Asistente).
+export function alfaParaCarga(n, kt, flaps = 0) {
+  flaps = Number(flaps) || 0;
+  const a0 = 2 + Math.min(1, flaps) * 3 + Math.max(0, flaps - 1) * 1, cmax = flaps ? cmaxFlaps(flaps) : 1;
+  const cl = Math.min(cmax, n / Math.max(1e-6, (Math.max(kt, 1) / VUELO.perdidaKt) ** 2));
+  return (cl / cmax) * (VUELO.alfaPerdida + a0) - a0;
+}
 // El ángulo de ataque que sostiene el vuelo nivelado a una velocidad (para la compensación).
 export function alfaNivel(kt, flaps = 0) {
   flaps = Number(flaps) || 0;
@@ -137,6 +159,9 @@ function subpaso(a, m, dt, amb, asistente) {
     anda = anda && n.pist.enMarcha;
     efectiva = anda ? efectiva * n.pist.factor : 0;
   }
+  // 0.14.119: boca abajo (o con G negativos) el carburador se queda sin combustible: tose y casi no empuja.
+  n.tose = invertido(a);
+  if (n.tose) { efectiva *= 0.15; n.rugido = Math.max(n.rugido ?? 0, 0.7); } else if (a.tose) n.rugido = 0;
   const aspero = Math.max(n.rugido, n.pist?.aspereza ?? 0);
   const vibra = aspero > 0 ? aspero * 260 * Math.sin(n.t * 7.3) * Math.sin(n.t * 2.1 + 1) : 0;
   const rpmMeta = anda ? VUELO.rpmRalenti + (VUELO.rpmMax - 200 - VUELO.rpmRalenti) * efectiva + n.kt * 2 + vibra : n.pist?.girando ? 260 : (n.kt > 50 ? n.kt * 9 : 0);
@@ -146,7 +171,7 @@ function subpaso(a, m, dt, amb, asistente) {
   if (n.pist) n.aceitePsi = a.aceitePsi + ((anda ? VUELO.aceitePsiNormal : 0) - a.aceitePsi) * Math.min(1, dt / 6);
   // ---- los mandos ----
   const pideAlabeo = lim(m.alabeo ?? 0, -1, 1), pideCabeceo = lim(m.cabeceo ?? 0, -1, 1);
-  const maxAlabeo = asistente ? VUELO.maxAlabeoAsistente : VUELO.maxAlabeo;
+  const maxAlabeo = asistente ? VUELO.maxAlabeoAsistente : VUELO.maxAlabeo, maxCab = asistente ? VUELO.maxCabeceoAsistente : VUELO.maxCabeceo;
   let alfa = a.cabeceo - grad(a.gamma);
   if (n.enSuelo) {
     // En el suelo: el alabeo es la dirección (pedales y rueda de nariz); la nariz se levanta con velocidad.
@@ -162,7 +187,7 @@ function subpaso(a, m, dt, amb, asistente) {
     let pMeta = pideAlabeo * 50;
     if (asistente && Math.abs(pideAlabeo) < 0.08) pMeta = lim(-a.alabeo * 0.6, -10, 10); // nivela, suave
     n.p = (a.p ?? 0) + (pMeta - (a.p ?? 0)) * Math.min(1, dt / 0.35);
-    n.alabeo = lim(a.alabeo + n.p * dt, -maxAlabeo, maxAlabeo);
+    n.alabeo = maxAlabeo >= 180 ? n180(a.alabeo + n.p * dt) : lim(a.alabeo + n.p * dt, -maxAlabeo, maxAlabeo);
     // La estabilidad del avión (como uno compensado): con el yugo suelto el ángulo de ataque vuelve al compensado (en
     // ~0.5 s) y la nariz sigue a la trayectoria (con algo de amortiguación del fugoide); con el yugo movido, el cabeceo tiene
     // inercia (q tarda ~0.25 s en tomar la tasa) y la compensación lo sigue. En un viraje la compensación no alcanza: la
@@ -171,7 +196,9 @@ function subpaso(a, m, dt, amb, asistente) {
     n.trim = trim;
     let cab;
     if (Math.abs(pideCabeceo) < 0.08) {
-      const alfaMeta = trim - 1.0 * (a.dgamma ?? 0);
+      // (0.14.119: la amortiguación del fugoide actúa sobre el plano del ala: inclinado, ayuda menos; boca abajo, nada. Un
+      // viraje sin tirar baja y la nariz cae, como en el avión de verdad)
+      const alfaMeta = trim - 1.0 * (a.dgamma ?? 0) * Math.max(0, Math.cos(rad(a.alabeo)));
       cab = alfa + (alfaMeta - alfa) * Math.min(1, dt / 0.5) + grad(a.gamma);
       n.q = (cab - a.cabeceo) / dt;
     } else {
@@ -181,13 +208,15 @@ function subpaso(a, m, dt, amb, asistente) {
     }
     const alfaN = cab - grad(a.gamma);
     // El Asistente es una ayuda suave: nunca deja pasar de 12° de ataque (no hay pérdida); no fija la altura ni la subida.
-    if (asistente && alfaN > 12) { cab = 12 + grad(a.gamma); n.q = Math.min(n.q ?? 0, 0); }
+    // (0.14.119: y tampoco deja pasar de unos 3.3 G: con el Asistente, quien empieza no rompe el avión al tirar rápido)
+    const alfaG = alfaParaCarga(3.3, a.kt, flaps);
+    if (asistente && alfaN > Math.min(12, alfaG)) { cab = Math.min(12, alfaG) + grad(a.gamma); n.q = Math.min(n.q ?? 0, 0); }
     // En pérdida, la nariz cae sola (y sin el Asistente, también un ala).
     if (alfaN > VUELO.alfaPerdida) {
       cab -= ((alfaN - VUELO.alfaPerdida) * 6 + 12) * dt;
       if (!asistente) n.p += (a.alabeo > 2 ? 1 : -1) * ALA_CAE * dt;
     }
-    n.cabeceo = lim(cab, -40, 35);
+    n.cabeceo = lim(cab, asistente ? -40 : -maxCab, maxCab);
     alfa = n.cabeceo - grad(a.gamma);
   }
   // ---- velocidad ----
@@ -215,10 +244,13 @@ function subpaso(a, m, dt, amb, asistente) {
     gamma = lim(a.gamma + dg * dt * 0.9, rad(-60), rad(40));
     const rafaga = amb.rafaga ? amb.rafaga(n.t) : null;
     if (rafaga) { n.alabeo += rafaga.alabeo * dt; n.cabeceo += rafaga.cabeceo * dt; gamma += rad(rafaga.cabeceo * 0.4) * dt; }
-    n.rumbo = norm360(a.rumbo + tasaDeGiro(n.alabeo, Math.max(kt, 30)) * dt);
+    // (0.14.119: hasta 60° la fórmula del viraje coordinado; más allá, la sustentación inclinada de verdad, también boca abajo)
+    n.rumbo = norm360(a.rumbo + (Math.abs(n.alabeo) <= 60 ? tasaDeGiro(n.alabeo, Math.max(kt, 30)) : tasaConCarga(n.alabeo, kt, Math.max(0.3, Math.abs(sobreW)))) * dt);
   }
   n.dgamma = grad(gamma - a.gamma) / dt; n.gamma = gamma; n.kt = kt;
   n.vs = kt * KT_FTS * Math.sin(gamma) * 60;
+  // 0.14.119: las corrientes de la tormenta (ft/min, arriba +): suben o bajan al avión con todo.
+  if (!n.enSuelo && amb.vertical) n.vs += amb.vertical;
   // ---- posición (aire + viento) ----
   const v = kt * KT_FTS * Math.cos(gamma); // ft/s horizontal
   const h = rad(n.rumbo);

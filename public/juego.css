@@ -616,8 +616,8 @@ body.juego-activo { overflow: hidden; }
   .juego-vuelo[data-tactil="1"] .juego-panel-der { width: 186px; }
   .juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes { right: auto; left: 50%; transform: translateX(-50%); }
   .juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes:active { transform: translateX(-50%) translateY(2px); }
-  /* (en la cabina, la pestaña va arriba, en el techo: abajo tapaba el yugo y los mandos dibujados) */
-  .juego-vuelo[data-tactil="1"][data-vista="cabina"] .juego-escenario > .juego-componentes { top: max(8px, env(safe-area-inset-top)); bottom: auto; min-height: 44px; }
+  /* (de lado la pestaña va arriba al centro, en la fila de los botones: abajo tapaba el yugo dibujado o los datos del vuelo) */
+  .juego-vuelo[data-tactil="1"] .juego-escenario > .juego-componentes { top: max(8px, env(safe-area-inset-top)); bottom: auto; min-height: 44px; }
 }
 @media (max-width: 360px) { .juego-vuelo[data-tactil="1"] .juego-yugo { width: 104px; height: 104px; } .juego-vuelo .juego-muesca { min-width: 48px; } }
 /* Con preguntas vuela el piloto automático: sin mandos (la cámara y la pausa quedan arriba). */

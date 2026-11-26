@@ -9,7 +9,7 @@ import { crearRenderGL } from './clase/motor3d-gl.js';
 import { PALETAS } from './clase/e3d-base.js';
 import { dibujarCabina, dibujarLadoCabina, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
 import { activarToques, bloquearZoom } from './clase/juego-tactil.js';
-import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua } from './clase/vuelo-modelo.js';
+import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua, LIMITES } from './clase/vuelo-modelo.js';
 import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz } from './clase/juego-mundo.js';
 import { montarMinimapa } from './clase/e3d-minimapa.js';
 import { cumulo } from './clase/e3d-base.js';
@@ -33,7 +33,7 @@ import { traficoInicial, moverCualquiera, alertaTrafico, etiquetaAltura } from '
 import { crearMotor, listaArranque, listaApagado, MOTOR_FAA, encenderMotor, apagarMotor, encenderTodo, mezclaAuto, lucesActivas, medirRunup, listaRunup, PASOS_RUNUP } from './clase/motor-piston.js';
 import { crearPanelMotor, crearPalanca } from './clase/juego-panel-motor.js';
 import { crearSonido } from './clase/juego-sonido.js';
-import { TIEMPOS, TIEMPO_FAA, condiciones, cambioAltimetro, nubesDe, nivelTurbulencia, mangaDeViento } from './clase/juego-tiempo.js';
+import { TIEMPOS, TIEMPO_FAA, condiciones, cambioAltimetro, nubesDe, nivelTurbulencia, mangaDeViento, corrienteVertical, rafagaDe, vientoTexto } from './clase/juego-tiempo.js';
 import { pintarDestello } from './clase/e3d-efectos.js';
 import { crearRepeticion, escenaDeRepeticion, estadoRepeticion, camaraRepeticion, primitivasRepeticion, tomaEn, fundido, congelada, ENCUENTROS, CAMARAS } from './clase/juego-repeticion.js';
 export { MINICLASES };
@@ -102,7 +102,8 @@ export function seguirCamara(antes, a, dt, { reducir = false } = {}) {
   const C = CAMARA_AFUERA, k = s => (reducir ? 1 : 1 - Math.exp(-Math.max(0, dt) / s));
   const gammaG = ((a.gamma ?? 0) * 180) / Math.PI;
   const altoMeta = a.enSuelo ? C.altoSuelo : Math.max(3, Math.min(16, C.alto - gammaG * C.porGamma));
-  const alabeoMeta = reducir ? 0 : (a.enSuelo ? 0 : a.alabeo ?? 0) * C.alabeo;
+  // (0.14.119: sin el Asistente se puede alabear hasta dar la vuelta: la cámara se inclina a lo sumo como con 60°)
+  const alabeoMeta = reducir ? 0 : (a.enSuelo ? 0 : Math.max(-60, Math.min(60, a.alabeo ?? 0))) * C.alabeo;
   const p = antes ?? { giro: a.rumbo, alto: altoMeta, alabeo: alabeoMeta };
   return { giro: mezclarAngulo(p.giro, a.rumbo, k(C.giroS)), alto: p.alto + (altoMeta - p.alto) * k(C.alturaS), alabeo: p.alabeo + (alabeoMeta - p.alabeo) * k(C.alabeoS) };
 }
@@ -156,11 +157,12 @@ export const VIENTO_RUMBOS = Object.freeze([[360, 'n'], [45, 'ne'], [90, 'e'], [
 export const VIENTO_KT = Object.freeze([0, 5, 10, 15, 20, 25]);
 export const siguienteFlaps = f => { const g = flapsAGrados(f); return g >= 30 ? 0 : (g + 10) / 20; };
 export const anteriorFlaps = f => { const g = flapsAGrados(f); return g <= 0 ? 0 : (g - 10) / 20; };
-// El viento elegido a mano, con sus ráfagas (hasta 1.6 veces, que suben y bajan sin ritmo fijo). → { desde, kt }
-export function vientoConRafagas(v, t) {
+// El viento parejo con sus ráfagas (hasta «rafagaKt», que suben y bajan sin ritmo fijo; nunca por debajo del parejo).
+// 0.14.119: las ráfagas son un interruptor aparte (rafagaDe en juego-tiempo.js), con cualquier viento y cualquier tiempo.
+export function vientoConRafagas(v, rafagaKt, t) {
   if (!v) return { desde: 360, kt: 0 };
-  const extra = v.rafagas && v.kt > 0 ? v.kt * 0.6 * Math.max(0, Math.sin(t * 0.7) * Math.sin(t * 1.9 + 0.4)) : 0;
-  return { desde: v.desde, kt: v.kt + extra };
+  const g = Math.max(v.kt, Number.isFinite(rafagaKt) ? rafagaKt : v.kt);
+  return { desde: v.desde, kt: v.kt + (g - v.kt) * Math.max(0, Math.sin(t * 0.7) * Math.sin(t * 1.9 + 0.4)) };
 }
 
 // Los mandos con las teclas apretadas: el yugo va hacia ±1 (y vuelve al centro al soltar), la potencia sube o baja.
@@ -268,7 +270,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const bVientoAuto = boton('juego-viento-auto juego-luz', t('juego.viento.auto'), () => ponerViento(null), { 'aria-pressed': 'true' });
   const botonesVientoDir = VIENTO_RUMBOS.map(([d, k]) => boton('juego-viento-dir juego-luz', t(`juego.viento.${k}`), () => ponerViento({ desde: d }), { 'data-desde': String(d), 'aria-pressed': 'false', 'aria-label': t('juego.viento.desde', { d: String(d).padStart(3, '0') }) }));
   const botonesVientoKt = VIENTO_KT.map(kt => boton('juego-viento-kt juego-luz', `${kt} kt`, () => ponerViento({ kt }), { 'data-kt': String(kt), 'aria-pressed': 'false' }));
-  const bRafagas = boton('juego-rafagas juego-luz', t('juego.viento.rafagas'), () => ponerViento({ rafagas: !(vientoManual?.rafagas) }), { 'aria-pressed': 'false' });
+  const bRafagas = boton('juego-rafagas juego-luz', t('juego.viento.rafagas'), () => { rafagasOn = !rafagasOn; tiempoPaso(); pintarViento(); }, { 'aria-pressed': 'false' });
   const vientoAhora = el('p', { class: 'juego-hoja-nota', 'aria-live': 'polite' });
   const bAyuda2 = boton('juego-ayuda2', `? ${t('juego.ayuda.abrir')}`, () => { abrirMenu(false); abrirAyuda(); });
   // (vertical u horizontal: en el teléfono, en la hoja)
@@ -310,7 +312,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const infoTiempo = el('span', { class: 'juego-info-dato' }), infoDist = el('span', { class: 'juego-info-dato' });
   const infoComb = el('span', { class: 'juego-info-comb' }, el('span', { class: 'juego-info-barra' }, el('span', { class: 'juego-info-lleno' })), el('span', { class: 'juego-info-gal' }));
   const destino = el('p', { class: 'juego-destino', 'aria-live': 'off' });
-  const info = el('div', { class: 'juego-info', 'aria-hidden': 'true' }, el('div', { class: 'juego-info-fila' }, infoTiempo, infoDist, infoComb), destino);
+  const infoViento = el('p', { class: 'juego-destino juego-info-viento' });
+  const info = el('div', { class: 'juego-info', 'aria-hidden': 'true' }, el('div', { class: 'juego-info-fila' }, infoTiempo, infoDist, infoComb), destino, infoViento);
   const fila2 = el('div', { class: 'juego-fila2' }, el('div', { class: 'juego-fila2-izq' }, subtitulo, chip), info);
   const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, fila2, hud, oferta, aviso, panelClase, pildoraClase, capaRepe, bMotor);
 
@@ -396,6 +399,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   let vientoManual = null, verMapa = !tactil, turbLeve = 0, recorridoNm = 0;
   // 0.14.119: la cámara libre (afuera, alrededor del avión; en la cabina, la cabeza) y si vuelve sola al centro.
   let orbita = orbitaInicial(), orbitaTocada = -1e9, orbitaVuelve = false;
+  // 0.14.119: las ráfagas (interruptor aparte), el viento de este momento (con ráfagas), las corrientes de la tormenta y los
+  // avisos de los límites (G y VNE) y del motor que tose boca abajo.
+  let rafagasOn = false, rafagaKt = 0, vientoActual = { desde: 360, kt: 0 }, corriente = 0, avisoG = -99, avisoVne = -99, vneS = 0, avisoTose = -99;
   // (0.14.117: el yugo táctil: donde tocó primero es el centro; cabeceo/alabeo, lo que pide el dedo; suave, lo que llega)
   const toque = { activo: false, cabeceo: 0, alabeo: 0, x0: 0, y0: 0, suave: { cabeceo: 0, alabeo: 0 } };
   const apretadas = new Set();
@@ -514,9 +520,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   function paletaTiempo() {
     const k = cond.dentro ? 1 : cond.gris;
     if (!k) return paleta;
-    const clave = `${hora}|${k.toFixed(2)}|${paleta.oscuro}`;
+    const clave = `${hora}|${k.toFixed(2)}|${paleta.oscuro}|${tiempoMet}`;
     if (clave !== claveGris) {
-      const g = paleta.oscuro ? [70, 76, 86] : [168, 174, 184];
+      // (0.14.119: la tormenta, mucho más oscura)
+      const g = paleta.oscuro ? [70, 76, 86] : tiempoMet === 'tormenta' ? [88, 94, 106] : [168, 174, 184];
       paletaGris = { ...paleta, cieloAlto: mezclar(paleta.cieloAlto, g, k), cieloBajo: mezclar(paleta.cieloBajo, g, k), bruma: mezclar(paleta.bruma, g, k), sueloLejos: mezclar(paleta.sueloLejos, g, k) };
       claveGris = clave;
     }
@@ -571,7 +578,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     const dentro = r ? Boolean(repe.nube && Math.hypot(avion.x - repe.nube.x, avion.ft / 1000 - repe.nube.y, avion.z - repe.nube.z) < repe.nube.r)
       : (nubeFalla && Math.hypot(avion.x - nubeFalla.x, avion.ft / 1000 - nubeFalla.y, avion.z - nubeFalla.z) < nubeFalla.r) || cond.dentro;
     const p = paletaTiempo();
-    const gris = mezclar(p.niebla, [150, 156, 166], cond.gris);
+    const gris = mezclar(p.niebla, tiempoMet === 'tormenta' ? [84, 90, 102] : [150, 156, 166], cond.gris);
     const niebla = dentro ? { color: [200, 204, 212], inicio: 0, fin: 0.35 } : { color: gris, inicio: Math.min(10, cond.visibilidad * 0.2), fin: Math.min(70, cond.visibilidad) };
     const sol = solDe(hora);
     if (gl3) gl3.render({ paleta: p, fijas: [mundo, mundoLuces, extras, nubesTiempo], prims, niebla, sol, lejos: 300, texturaEscala: 0.35 }, cam, ancho, alto, { escala: escalaPx });
@@ -600,7 +607,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       ctx.restore();
     }
     // El rayo: un destello que se apaga solo.
-    if (relampago > 0) { pintarDestello(ctx, ancho, alto, reducir ? Math.min(0.3, relampago) : relampago); relampago = Math.max(0, relampago - 0.08); }
+    // (0.14.119: con «menos movimiento», sin destello: una claridad suave que se apaga despacio; los rayos, uno cada 3 s o más)
+    if (relampago > 0) {
+      if (reducir) { ctx.fillStyle = `rgba(230,236,255,${(0.12 * relampago).toFixed(3)})`; ctx.fillRect(0, 0, ancho, alto); relampago = Math.max(0, relampago - 0.02); }
+      else { pintarDestello(ctx, ancho, alto, relampago); relampago = Math.max(0, relampago - 0.08); }
+    }
     if (!r) marcasTrafico(cam, techo);
     // La bocina de pérdida, vista: un borde rojo que late.
     if (avion.aviso && !avion.enSuelo) {
@@ -701,10 +712,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     }
     mezclaDelAsistente();
     // (0.14.118: entre ráfaga y ráfaga, la turbulencia de siempre: suave con buen tiempo, más con viento, nubes o tormenta)
-    const amb = { viento: ambiente.viento, rafaga: tiempo < rafagaHasta ? rafaga : !mc && turbLeve > 0.005 ? rafagaLeve : null };
+    const amb = { viento: vientoActual, vertical: corriente, rafaga: tiempo < rafagaHasta ? rafaga : !mc && turbLeve > 0.005 ? rafagaLeve : null };
     const antes = avion;
     avion = pasoVuelo(avion, m, dt, { asistente: asistente || Boolean(sostener), ambiente: amb });
     recorridoNm += ((avion.velSuelo ?? 0) * dt) / 3600;
+    if (limitesPaso(dt)) return;
     // La práctica del motor: con el freno de estacionamiento (no se mueve) y midiendo las caídas de RPM de la prueba.
     if (modoActual === 'motor') {
       avion = { ...avion, x: PARQUEO.x, z: PARQUEO.z, rumbo: PARQUEO.rumbo, kt: 0, cabeceo: 0, alabeo: 0 };
@@ -1023,7 +1035,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     for (const l of lucesSenda(avion.x, avion.z, avion.ft).luces) if (!l.apagada) out.push(prima(l, { r: 0.003, min: hora === 'dia' ? 1.8 : 1.6 }));
     if (conTrafico) for (const tr of trafico) out.push(...primitivasTrafico(tr, { x: ojo[0], z: ojo[2] }, { hora, t: tiempo }));
     // 0.14.118: la manga de viento junto a la cabecera (se ve desde la pista y en la final).
-    if (Math.hypot(ojo[0], ojo[2] + 1.55) < 4) out.push(...mangaDeViento(ambiente.viento, tiempo));
+    if (Math.hypot(ojo[0], ojo[2] + 1.55) < 4) out.push(...mangaDeViento(vientoActual, tiempo));
     return out;
   }
   function ponerHora(nueva) {
@@ -1322,7 +1334,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     else ajuste = cond.altimetro;
     raiz.setAttribute('data-tiempo', id);
     for (const b of botonesTiempo) b.setAttribute('aria-pressed', String(b.dataset.tiempo === id));
-    pintarViento();
+    tiempoPaso(); pintarViento(); pintarInfo();
     if (callado) return;
     if (id === 'despejado') { mostrarAviso({ tono: 'info', titulo: t('juego.tiempo.despejado'), partes: [], corto: true }); return; }
     const f = id === 'nubes' ? TIEMPO_FAA.nubes : TIEMPO_FAA[id];
@@ -1333,12 +1345,16 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const rafagaLeve = tt => { const r = baseLeve(tt); r.cabeceo *= turbLeve; r.alabeo *= turbLeve; return r; };
   function tiempoPaso() {
     cond = condiciones(tiempoMet, avion.x, avion.z, avion.ft);
-    // 0.14.118: el viento elegido a mano manda (con sus ráfagas); la turbulencia sale del tiempo, el viento y la hora.
-    if (vientoManual) ambiente = { ...ambiente, viento: vientoConRafagas(vientoManual, tiempo) };
-    turbLeve = nivelTurbulencia(cond, { ft: avion.ft, enSuelo: avion.enSuelo, hora, viento: vientoManual ? { kt: vientoManual.kt, rafagas: vientoManual.rafagas ? vientoManual.kt * 1.6 : 0 } : ambiente.viento });
+    // 0.14.118: el viento elegido a mano manda; si no, el del tiempo (o el de los eventos, con tiempo despejado).
+    // 0.14.119: ambiente.viento es el viento parejo; vientoActual, con las ráfagas (las del tiempo o las del interruptor).
+    if (vientoManual) ambiente = { ...ambiente, viento: { desde: vientoManual.desde, kt: vientoManual.kt } };
+    else if (tiempoMet !== 'despejado') ambiente = { ...ambiente, viento: { desde: cond.viento.desde, kt: cond.viento.kt } };
+    const base = ambiente.viento ?? { desde: 360, kt: 0 };
+    rafagaKt = rafagasOn ? rafagaDe(base.kt, true) : !vientoManual && tiempoMet !== 'despejado' && cond.viento.rafagas > base.kt ? cond.viento.rafagas : base.kt;
+    vientoActual = vientoConRafagas(base, rafagaKt, tiempo);
+    corriente = avion.enSuelo ? 0 : corrienteVertical(tiempoMet, tiempo, avion.x, avion.z) * Math.min(1, avion.ft / 800);
+    turbLeve = nivelTurbulencia(cond, { ft: avion.ft, enSuelo: avion.enSuelo, hora, viento: { kt: base.kt, rafagas: rafagaKt } });
     if (tiempoMet === 'despejado') return;
-    const v = cond.viento;
-    if (!vientoManual) ambiente = { ...ambiente, viento: { desde: v.desde, kt: v.kt + (v.rafagas ? (v.rafagas - v.kt) * Math.max(0, Math.sin(tiempo * 0.7) * Math.sin(tiempo * 1.9)) : 0) } };
     if (cond.turbulencia > 0.05) { rafaga = rafagaTurbulencia(Math.min(1.6, cond.turbulencia * 1.3), 4); rafagaHasta = tiempo + 0.5; }
     if (cambioAltimetro(ajusteDicho, cond.altimetro)) {
       const primera = ajusteDicho == null;
@@ -1435,7 +1451,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   function ponerViento(cambio) {
     if (cambio == null) vientoManual = null;
     else {
-      const v = vientoManual ?? { desde: Math.round((ambiente.viento?.desde ?? 360) / 45) * 45 || 360, kt: Math.round((ambiente.viento?.kt ?? 0) / 5) * 5, rafagas: false };
+      const v = vientoManual ?? { desde: Math.round((ambiente.viento?.desde ?? 360) / 45) * 45 || 360, kt: Math.round((ambiente.viento?.kt ?? 0) / 5) * 5 };
       vientoManual = { ...v, ...cambio };
       if (cambio.desde != null && !vientoManual.kt) vientoManual.kt = 10;
     }
@@ -1447,9 +1463,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     bVientoAuto.setAttribute('aria-pressed', String(!v));
     for (const b of botonesVientoDir) b.setAttribute('aria-pressed', String(Boolean(v) && Number(b.dataset.desde) === v.desde));
     for (const b of botonesVientoKt) b.setAttribute('aria-pressed', String(Boolean(v) && Number(b.dataset.kt) === v.kt));
-    bRafagas.setAttribute('aria-pressed', String(Boolean(v?.rafagas)));
+    bRafagas.setAttribute('aria-pressed', String(rafagasOn));
     const w = ambiente.viento ?? { desde: 360, kt: 0 };
-    const s = w.kt < 1 ? t('juego.viento.calma') : t('juego.viento.ahora', { desde: String(Math.round(w.desde) % 360 || 360).padStart(3, '0'), kt: Math.round(v ? v.kt : w.kt) }) + (v?.rafagas ? ` ${t('juego.viento.con_rafagas', { kt: Math.round(v.kt * 1.6) })}` : '');
+    const s = w.kt < 1 && rafagaKt < 1 ? t('juego.viento.calma') : t('juego.viento.ahora_texto', { v: vientoTexto(w.desde, w.kt, rafagaKt) });
     if (vientoAhora.textContent !== s) vientoAhora.textContent = s;
     for (const b of botonesTiempo) b.setAttribute('aria-pressed', String(b.dataset.tiempo === tiempoMet));
   }
@@ -1469,6 +1485,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     infoComb.style.setProperty('--k', k.toFixed(3));
     infoComb.setAttribute('data-bajo', k < 0.2 ? '1' : '0');
     const gs = infoComb.lastChild; if (gs.textContent !== gal) gs.textContent = gal;
+    // (0.14.119: el viento, como en el METAR: «270° 12G20 kt»)
+    const w = ambiente.viento ?? { desde: 360, kt: 0 }, vt = w.kt < 1 && rafagaKt < 1 ? t('juego.viento.calma_corta') : t('juego.viento.corto', { v: vientoTexto(w.desde, w.kt, rafagaKt) });
+    if (infoViento.textContent !== vt) infoViento.textContent = vt;
     pintarTrim();
   }
   function pausar(si) {
@@ -1575,6 +1594,26 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const dedosEscena = new Map();
   let pellizco0 = null, ultimoToqueEscena = { t: -1e9, x: 0, y: 0 };
   const cabinaLibre = () => (repe ? false : vista === 'cabina');
+  // 0.14.119: los límites del avión (sin el Asistente se puede volar como el de verdad, y también pasarse): el factor de carga
+  // (+3.8 / −1.52 G: aviso; con 1.5 veces eso se rompe) y la VNE (163 kt: aviso; a 180 o 8 s seguidos, se rompe). Con el
+  // Asistente solo avisan (para empezar tranquilo). Boca abajo, el motor tose (el aviso dice por qué).
+  function limitesPaso(dt) {
+    if (mc || guiado || avion.enSuelo || avion.choque) { vneS = 0; return false; }
+    const g = avion.g ?? 1, L = LIMITES;
+    const roto = (motivo, datos) => { terminarVuelo({ nivel: 'estructura', motivos: [motivo], puntos: 0 }, datos); volo = false; return true; };
+    if (!asistente && (g > L.gMax * L.seguridad || g < L.gMin * L.seguridad)) return roto('sobrecarga', { kt: avion.kt });
+    if ((g > L.gMax || g < L.gMin) && tiempo - avisoG > 4) {
+      avisoG = tiempo; sonido.evento('pitido');
+      mostrarAviso({ tono: 'mal', titulo: t('juego.limite.g', { g: g.toFixed(1), max: L.gMax, min: L.gMin }), partes: [], corto: true });
+    }
+    if (avion.kt > L.vneKt) {
+      vneS += dt;
+      if (!asistente && (avion.kt > L.vneRompeKt || vneS > L.vneSeg)) return roto('vne', { kt: avion.kt });
+      if (tiempo - avisoVne > 4) { avisoVne = tiempo; sonido.evento('pitido'); mostrarAviso({ tono: 'mal', titulo: t('juego.limite.vne', { vne: L.vneKt }), partes: [], corto: true }); }
+    } else vneS = 0;
+    if (avion.tose && tiempo - avisoTose > 12) { avisoTose = tiempo; mostrarAviso({ tono: 'info', titulo: t('juego.limite.tose'), partes: [], corto: true }); }
+    return false;
+  }
   function centrarCamara() { orbita = orbitaInicial(); pintarBotones(); }
   function tocarOrbita(nueva) { const antes = orbitaCentrada(orbita); orbita = nueva; orbitaTocada = performance.now(); if (antes !== orbitaCentrada(orbita)) pintarBotones(); }
   lienzo.addEventListener('pointerdown', e => {
@@ -1686,7 +1725,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // Para las capturas y las pruebas: poner el avión en un estado y dibujar ya (también en raiz.juego, para las capturas).
   const control = {
-    raiz, destruir, reiniciar, get orbita() { return orbita; }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
+    raiz, destruir, reiniciar, get orbita() { return orbita; }, ponerRelampago(k) { relampago = k; }, get asistente() { return asistente; }, ponerAsistente(si) { asistente = Boolean(si); pintarBotones(); }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
     ponerTrafico(tipo) { trafico = [{ ...crearTrafico(tipo, avion), fase: 0.3 }]; return trafico[0]; },
     get guiado() { return guiado; }, get puntaje() { return puntaje; }, get pool() { return pool; }, get flujo() { return flujo; }, get faseClase() { return faseClase; }, responderClase,
     get trafico() { return trafico; }, ponerMandos(m) { Object.assign(mandos, m); pintarPotencia(); }, verMapa(lejos) { mapaLejos = Boolean(lejos); pintarMapas(); dibujarMapa(); },

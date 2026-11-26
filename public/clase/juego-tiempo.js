@@ -7,7 +7,9 @@ import { nubeTormenta } from './e3d-efectos.js';
 
 // 0.14.118 (pedido del dueño: «poder controlar el clima»): también Lluvia (chubascos bajo una capa baja) y Niebla (de
 // radiación: el aire calmo y húmedo de la mañana, abajo casi no se ve). Ver juego.tiempo.<id>.texto.
-export const TIEMPOS = Object.freeze(['despejado', 'nubes', 'lluvia', 'niebla', 'frio', 'calido']);
+// 0.14.119: también Tormenta (nubes bajas y oscuras, lluvia fuerte, rayos, ráfagas, turbulencia fuerte y corrientes que
+// suben y bajan; en la vida real, a 20 NM como mínimo: AIM 7-1-26, como en las escenas 3D de las tormentas).
+export const TIEMPOS = Object.freeze(['despejado', 'nubes', 'lluvia', 'niebla', 'tormenta', 'frio', 'calido']);
 export const TIEMPO_FAA = Object.freeze({
   frio: Object.freeze({
     antes: 'nubes cumuliformes en torre y cumulonimbos; la presión baja', paso: 'lluvia fuerte con rayos, ráfagas y turbulencia; visibilidad mala; la temperatura baja de golpe; la presión toca fondo',
@@ -23,6 +25,7 @@ export const TIEMPO_FAA = Object.freeze({
   niebla: Object.freeze({ tipo: 'radiacion', vientoMaxKt: 5, fuente: 'PHAK cap. 12' }),
   // La lluvia: chubascos que bajan la visibilidad y el techo, con ráfagas (PHAK cap. 12).
   lluvia: Object.freeze({ fuente: 'PHAK cap. 12' }),
+  tormenta: Object.freeze({ evitarNM: 20, fuente: 'AIM 7-1-26 · PHAK cap. 12' }),
 });
 
 // Dónde está cada cosa (unidades de 1,000 ft; norte = +z).
@@ -32,6 +35,7 @@ export const GEOMETRIA = Object.freeze({
   calido: Object.freeze({ lineaZ: -18, base: 900, tope: 5000, alcanceZ: 60 }), // el frente en superficie al sur; el estrato al norte
   lluvia: Object.freeze({ base: 2500, tope: 6000 }),
   niebla: Object.freeze({ tope: 500 }), // la capa de niebla, pegada al suelo
+  tormenta: Object.freeze({ base: 2200, corrienteFpm: 1500 }),
 });
 const lim = (x, a, b) => Math.min(b, Math.max(a, x));
 const r2 = x => Math.round(x * 100) / 100;
@@ -48,6 +52,11 @@ export function condiciones(tiempo, x, z, ft) {
     const g = GEOMETRIA.lluvia, dentro = ft >= g.base && ft <= g.tope;
     return { ...base, dentro, techo: g.base, visibilidad: dentro ? 0.35 : ft < g.base ? 16 : 50, gris: ft < g.base ? 0.6 : 0.1, lluvia: ft < g.base ? 0.75 : 0, turbulencia: dentro ? 0.35 : 0.15,
       viento: { desde: 200, kt: 10, rafagas: 18 }, temperatura: 14, altimetro: 29.8 };
+  }
+  if (tiempo === 'tormenta') {
+    const g = GEOMETRIA.tormenta, dentro = ft >= g.base;
+    return { ...base, dentro, techo: g.base, visibilidad: dentro ? 0.35 : 8, gris: 0.85, lluvia: 1, rayos: true, turbulencia: dentro ? 1.3 : 0.85,
+      viento: { desde: 240, kt: 18, rafagas: 34 }, temperatura: 17, altimetro: 29.7 };
   }
   if (tiempo === 'niebla') {
     const g = GEOMETRIA.niebla, k = lim((ft - g.tope * 0.4) / (g.tope * 0.8), 0, 1); // 0 en el suelo … 1 arriba de la capa
@@ -103,6 +112,15 @@ export function nubesDe(tiempo) {
       puff([x, y0 + 0.6, z], 3 + azar() * 0.7, 0.65, 0.97);
       if ((i + j) % 3 === 0) out.push(linea([[x, y0, z], [x + 0.25, 0, z - 0.3]], [140, 150, 170], { a: 0.28, w: 2 }));
     }
+  } else if (tiempo === 'tormenta') {
+    // Una capa baja y oscura y torres de tormenta alrededor, con sus cortinas de lluvia.
+    const g = GEOMETRIA.tormenta, y0 = g.base / 1000;
+    for (let i = -6; i <= 6; i++) for (let j = -6; j <= 8; j++) {
+      const x = i * 5 + (azar() - 0.5) * 2, z = j * 5 + (azar() - 0.5) * 2;
+      puff([x, y0 + 0.5, z], 3.2 + azar() * 0.8, 0.85, 0.98);
+      if ((i + j) % 2 === 0) out.push(linea([[x, y0, z], [x + 0.3, 0, z - 0.4]], [120, 130, 150], { a: 0.35, w: 2 }));
+    }
+    for (const [x, z] of [[-9, 8], [8, 14], [14, -6], [-14, -10]]) out.push(...nubeTormenta({ x, z, base: y0, ancho: 4, altoMax: 24, k: 0.95, semilla: 70 + x, gris: 0.2 }));
   } else if (tiempo === 'frio') {
     const g = GEOMETRIA.frio;
     for (let x = -34; x <= 46; x += 7) out.push(...nubeTormenta({ x: x + (azar() - 0.5) * 2, z: g.lineaZ + (azar() - 0.5) * 2, base: 2.2, ancho: 4.2, altoMax: 26, k: 0.95, semilla: 50 + x, gris: 0.15 }));
@@ -145,4 +163,17 @@ export function mangaDeViento(viento, t = 0) {
     out.push(bola(p, (0.0011 - f * 0.0004) * (0.6 + 0.4 * k), i % 2 ? [242, 110, 30] : [245, 245, 245], { min: 1.2 }));
   }
   return out;
+}
+
+// 0.14.119: las corrientes de la tormenta (ft/min; + sube): cambian con el lugar y el tiempo (hasta ±1,500 ft/min).
+export function corrienteVertical(tiempo, t, x, z) {
+  if (tiempo !== 'tormenta') return 0;
+  return GEOMETRIA.tormenta.corrienteFpm * Math.sin(t * 0.21 + x * 3.1) * Math.cos(t * 0.13 + z * 2.3);
+}
+// 0.14.119: las ráfagas como un interruptor aparte (con cualquier viento y cualquier tiempo): a cuánto llegan (kt).
+export const rafagaDe = (kt, si) => (si ? Math.max(Math.round(kt) + 8, Math.round(kt * 1.6)) : Math.round(kt));
+// Cómo se dice el viento: «270° 12 kt» o, con ráfagas, «270° 12G20 kt».
+export function vientoTexto(desde, kt, g = kt) {
+  const d = String(Math.round(desde) % 360 || 360).padStart(3, '0'), k = Math.round(kt), gg = Math.round(g);
+  return gg > k ? `${d}° ${k}G${gg} kt` : `${d}° ${k} kt`;
 }
