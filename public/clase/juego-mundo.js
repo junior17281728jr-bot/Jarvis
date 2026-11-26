@@ -97,7 +97,7 @@ export function avionPropio(a, { t = 0, yugo = { alabeo: 0, cabeceo: 0 }, luces 
     if (d.puntaAla) { const q = d.puntaAla > 0 ? m.luces.derecha : m.luces.izquierda; for (const k of [0, 1, 2]) extra.push(bolaMundo(L([q[0] + 0.3 + k * 0.4, q[1] - 0.05, q[2] * (1 - k * 0.03)]), 0.0005, [35, 32, 30], { min: 1.5 })); }
     if (d.tren >= 2 && a.enSuelo && a.kt > 2 && !reducir) for (let k = 0; k < 4; k++) if ((t * 13 + k * 0.37) % 1 < 0.5) { const q = (d.trenLado || 1) > 0 ? m.luces.derecha : m.luces.izquierda; extra.push(bolaMundo(L([q[0] * 0.3 + k * 0.5, -0.8, q[2] * 0.25]), 0.0007, [255, 190, 90], { tex: 'brillo', min: 2.5, a: 0.9 })); }
   }
-  return [...extra, ...primitivasAvion({ palaDoblada: Boolean(d?.helice),
+  return [...extra, ...primitivasAvion({ palaDoblada: Boolean(d?.helice), danos: d ?? null,
     pos: posicionAvion(a), rumbo: a.rumbo, cabeceo: a.cabeceo, alabeo: a.alabeo, escala: ESCALA_AVION,
     // (0.14.122: la sombra va aparte, proyectada con el sol y según la altura: juego-suelo.js)
     helice: t * (a.rpm / 60) * Math.PI * 2 * 0.2, luces, t, alerones: yugo.alabeo * 15, profundidad: yugo.cabeceo * 12, sombra: null,

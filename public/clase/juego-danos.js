@@ -26,7 +26,14 @@ export const PARTES_AVE = Object.freeze(['parabrisas', 'borde', 'motor']);
 
 export const sinDanos = () => ({ tren: 0, trenLado: 0, helice: 0, puntaAla: 0, cola: 0, goma: 0, parabrisas: 0, borde: 0, motorAve: 0,
   // 0.14.127: lo que se gasta de a poco (el exceso de velocidad y de G): los flaps, los mandos y la estructura.
-  flapEstres: 0, flapAtascado: 0, flapAsim: 0, flutter: 0, aleron: 0, elevador: 0, estres: 0, alas: 0 });
+  flapEstres: 0, flapAtascado: 0, flapAsim: 0, flutter: 0, aleron: 0, elevador: 0, estres: 0, alas: 0,
+  // 0.14.130: el motor que se va gastando después de un golpe (0..1: el aceite se pierde, la temperatura sube, anda áspero y,
+  // al final, se para) y la panza raspada (se arrastró sin tren).
+  motorDesgaste: 0, panza: 0 });
+// 0.14.130: lo que pasa de a poco. El motor golpeado (un pájaro en la toma o un golpe de hélice) pierde aceite: en unos 4
+// minutos a toda potencia (más despacio con menos potencia) se gasta del todo; un ala abollada en el borde de ataque, o
+// doblada, pierde combustible (galones por hora). Números del modelo, no de un manual.
+export const DESGASTE = Object.freeze({ motorAveS: 240, heliceS: 600, fugaBordeGph: 4, fugaAlasGph: 2 });
 // 0.14.127: los límites de velocidad del anemómetro (PHAK cap. 8, fig. 8-8: el blanco termina en la VFE, el verde en la VNO, la
 // raya roja es la VNE; los números, los del anemómetro de la cabina) y los de G (los de LIMITES en vuelo-modelo.js).
 export const LIMITES_VEL = Object.freeze({ vfeKt: 85, vnoKt: 129, vneKt: 163, gMax: 3.8, gMin: -1.52, seguridad: 1.5, fuente: 'PHAK cap. 8 · cap. 5' });
@@ -46,6 +53,8 @@ export function listaDanos(d) {
   if (d.aleron > 0) out.push('aleron');
   if (d.elevador >= 0.8) out.push('cola_grave'); else if (d.elevador > 0) out.push('elevador');
   if (d.alas > 0) out.push('alas');
+  if (d.motorDesgaste >= 0.25) out.push('motor_aceite');
+  if (d.borde || d.alas > 0) out.push('fuga');
   return out;
 }
 const juntar = (a, b) => {
@@ -61,7 +70,7 @@ export function clasificarImpacto(toque, antes = null) {
   const fpm = Math.max(0, -(toque.vs ?? 0)), banco = Math.abs(toque.alabeo ?? 0), lado = (toque.alabeo ?? 0) > 0 ? 1 : -1, nariz = toque.cabeceo ?? 0, kt = toque.kt ?? 0;
   const fatal = fpm > DANOS.fatalFpm || banco > DANOS.alabeoFatalGrados || (nariz < DANOS.narizFatalGrados && fpm > 600);
   const nuevo = {};
-  if (fpm > DANOS.trenRotoFpm) { nuevo.tren = 2; nuevo.trenLado = banco > 2 ? lado : 1; } else if (fpm > DANOS.trenDobladoFpm) { nuevo.tren = 1; nuevo.trenLado = banco > 2 ? lado : 1; }
+  if (fpm > DANOS.trenRotoFpm) { nuevo.tren = 2; nuevo.trenLado = banco > 2 ? lado : 1; nuevo.panza = 1; } else if (fpm > DANOS.trenDobladoFpm) { nuevo.tren = 1; nuevo.trenLado = banco > 2 ? lado : 1; }
   // (0.14.127: la hélice golpeada sigue andando, áspera; solo un golpe fuerte de nariz la para)
   if (nariz < DANOS.heliceGrados && fpm > DANOS.heliceFpm) nuevo.helice = fpm > DANOS.trenRotoFpm ? 1 : 0.5;
   if (banco > DANOS.alabeoPuntaGrados) nuevo.puntaAla = lado;
@@ -91,7 +100,7 @@ export function efectosDanos(d) {
   // motorPara, autAlabeo y autCabeceo (cuánto responden los alerones y el timón de profundidad, 0..1), cabeceoExtra (°/s de
   // nariz que se va sola), oscila (0..1: la cola muy dañada hace oscilar la nariz cada vez más), guinada (°/s del rumbo en el
   // aire), flapsFijos (los flaps no se mueven), sustentacion (factor por las alas dobladas).
-  const e = { potencia: 1, rugido: 0, alabeo: 0, tiron: 0, frenoSuelo: 0, inclinacion: 0, motorPara: false, hundido: 0, autAlabeo: 1, autCabeceo: 1, cabeceoExtra: 0, oscila: 0, guinada: 0, flapsFijos: false, sustentacion: 1 };
+  const e = { potencia: 1, rugido: 0, alabeo: 0, tiron: 0, frenoSuelo: 0, inclinacion: 0, motorPara: false, hundido: 0, fugaGph: 0, desgasteS: 0, autAlabeo: 1, autCabeceo: 1, cabeceoExtra: 0, oscila: 0, guinada: 0, flapsFijos: false, sustentacion: 1 };
   if (!d) return e;
   if (d.helice > 0) { e.potencia *= d.helice >= 1 ? 0 : 0.7; e.rugido = Math.max(e.rugido, d.helice >= 1 ? 0.9 : 0.65); e.motorPara = d.helice >= 1; }
   if (d.motorAve > 0) { e.potencia *= 0.75; e.rugido = Math.max(e.rugido, 0.5); }
@@ -108,6 +117,13 @@ export function efectosDanos(d) {
   if (d.flapAtascado || d.flapAsim) e.flapsFijos = true;
   if (d.flapAsim) e.alabeo += d.flapAsim * 7;
   if (d.alas > 0) { e.sustentacion = 1 - Math.min(0.15, d.alas * 0.08); e.alabeo += d.alas * 1.5; }
+  // (0.14.130: el combustible que se va por el ala dañada; el motor que se gasta: el aceite, la temperatura y, gastado,
+  // áspero y con menos potencia; del todo, se para)
+  e.fugaGph = (d.borde ? DESGASTE.fugaBordeGph : 0) + (d.alas > 0 ? DESGASTE.fugaAlasGph : 0);
+  e.desgasteS = d.motorAve > 0 ? DESGASTE.motorAveS : d.helice > 0 && d.helice < 1 ? DESGASTE.heliceS : 0;
+  const w = d.motorDesgaste ?? 0;
+  if (w > 0.5) { e.rugido = Math.max(e.rugido, 0.4 + (w - 0.5)); e.potencia *= 1 - (w - 0.5) * 0.8; }
+  if (w >= 1) e.motorPara = true;
   return e;
 }
 

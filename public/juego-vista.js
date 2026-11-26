@@ -466,7 +466,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   let limitesOn = false;
   try { limitesOn = localStorage.getItem('academia.juego.limites') === '1'; } catch { limitesOn = false; }
   function ponerLimites(si) { limitesOn = Boolean(si); try { localStorage.setItem(CLAVE_LIMITES, limitesOn ? '1' : '0'); } catch { /* sin almacenamiento */ } pintarBotones(); }
-  let juicioPendiente = null; // (0.14.127: el juez del toque que espera a que el avión dañado se detenga)
+  let juicioPendiente = null; const danosVistos = new Set(); // (0.14.127: el juez del toque que espera a que el avión dañado se detenga)
   let rafagasOn = false, rafagaKt = 0, vientoActual = { desde: 360, kt: 0 }, corriente = 0, avisoG = -99, avisoVne = -99, vneS = 0, avisoTose = -99;
   // (0.14.117: el yugo táctil: donde tocó primero es el centro; cabeceo/alabeo, lo que pide el dedo; suave, lo que llega)
   const toque = { activo: false, cabeceo: 0, alabeo: 0, x0: 0, y0: 0, suave: { cabeceo: 0, alabeo: 0 } };
@@ -1165,12 +1165,14 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     }
   }
   function avisarAve(parte) {
+    for (const id of listaDanos(avion.danos)) if (id !== 'fuga' && id !== 'motor_aceite') danosVistos.add(id); // (lo dice el aviso del pájaro)
     sonido.evento('toque');
     // (0.14.127: en una esquina, sin tapar nada; lo largo, en la lista de daños del Menú)
     tostada('🐦', t(`juego.ave.${parte}`), 'mal', { titulo: t('juego.ave.titulo'), partes: [el('strong', { texto: t(`juego.ave.${parte}`) }), t('juego.ave.que'), t('juego.fuente', { f: AVES.fuente })] });
     pintarDanos();
   }
   function avisarDanos(ids) {
+    for (const id of ids) danosVistos.add(id);
     sonido.evento('toque');
     for (const id of ids) tostada('⚠', t(`juego.dano.${id}`), 'mal', { titulo: t(`juego.dano.${id}`), partes: [t(`juego.dano.${id}.que`), t('juego.fuente', { f: `${DANOS.fuente} · ${LIMITES_VEL.fuente}` })] });
     pintarDanos();
@@ -1613,7 +1615,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     volo = m === 'final' || m === 'preguntas'; ultimoToque = -10; tiempo = 0; camAfuera = null;
     puntaje = puntajeInicial(); agenda = crearAgenda(azar); ambiente = { viento: { desde: 360, kt: 0 } }; rafagaHasta = -1; fallaDesde = null; decision = null;
     extras = []; nubeFalla = null; desvioHasta = -1; oferta.hidden = true; aviso.hidden = true; pregunta.hidden = true; explicacion.hidden = true; subtitulo.hidden = true; abierta = false;
-    flujo = null; vistaAntes = null; indicado = null; juicioPendiente = null; trafico = traficoInicial(); avisados.clear(); terminarRepeticion(); repeDatos = null; sostener = null;
+    flujo = null; vistaAntes = null; indicado = null; juicioPendiente = null; danosVistos.clear(); trafico = traficoInicial(); avisados.clear(); terminarRepeticion(); repeDatos = null; sostener = null;
     guiado = m === 'preguntas' ? crearGuiado() : null; objetivo = null; enAproximacion = false; esperando = Boolean(guiado);
     raiz.setAttribute('data-modo', m); modoActual = m; retener = null; tormenta = null;
     resultado.hidden = true; pintarBotones(); pintarPotencia(); pausar(false);
@@ -1829,6 +1831,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       tostada('⚠', t(`juego.limite.${a}_corto`, v), 'mal', { titulo: t(`juego.limite.${a}`, v), partes: [t('juego.fuente', { f: `${LIMITES.fuente} · ${LIMITES_VEL.fuente}` })] });
     }
     if (w.nuevos.length) avisarDanos(w.nuevos);
+    // (0.14.130: lo que aparece de a poco en el modelo: el motor que pierde aceite, la fuga de combustible)
+    const otros = listaDanos(avion.danos).filter(x => !danosVistos.has(x));
+    if (otros.length) avisarDanos(otros);
     if (w.fatal) { terminarVuelo({ nivel: 'estructura', motivos: [w.avisos.includes('vne') ? 'vne' : 'sobrecarga'], puntos: 0 }, { kt: avion.kt }); volo = false; return true; }
     if (avion.tose && tiempo - avisoTose > 12) { avisoTose = tiempo; tostada('⛽', t('juego.limite.tose_corto'), 'info', { titulo: t('juego.limite.tose'), partes: [] }); }
     return false;

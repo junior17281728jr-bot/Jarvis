@@ -7,7 +7,7 @@
 // el contexto del lienzo llega de afuera (las pruebas usan uno de mentira).
 
 import { dibujarCabina as dibujarCabinaCompleta } from './cabina.js';
-import { construirAvion } from './avion-modelo.js';
+import { construirAvion, puntoFuselaje, wlAla, P as Pmodelo } from './avion-modelo.js';
 
 // ---------- vectores ----------
 export const suma = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -230,18 +230,69 @@ function girarEje(v, o, u, c, s) {
 const CERO = [0, 0, 0];
 // Las primitivas del avión en el mundo: pos, rumbo, cabeceo, alabeo, escala y el ángulo de la hélice (radianes).
 // alerones y profundidad: cuánto se mueven (grados; alerones + = el derecho baja); t: el reloj (destello de las luces).
-export function primitivasAvion({ pos, rumbo = 0, cabeceo = 0, alabeo = 0, escala = 1, helice = 0, luces = true, sombra = null, alerones = 0, profundidad = 0, t = 0, palaDoblada = false }) {
+// Las marcas de los daños sobre la piel (en el modelo; L lleva al mundo): rayas, manchas y la grieta del parabrisas.
+function marcasDanos(d, L, N) {
+  const out = [], PIE = 3.2;
+  const quad = (pts, c, a = 1, extra = {}) => { const p = pts.map(L); out.push({ t: 'p', p, c, a, luz: 0.7, n: normalDe(p), doble: true, grupo: 'avion', brillo: 0.05, ...extra }); };
+  // La panza raspada (se arrastró sin tren): rayas de metal a lo largo, claras y oscuras.
+  if (d.panza || d.tren >= 2) for (let i = -3; i <= 3; i++) {
+    const z = (i * 0.16) / PIE, w = 0.035 / PIE, a0 = puntoFuselaje(4.5 + (i & 1) * 0.6, -1, 1, 0.025), a1 = puntoFuselaje(13 - (i & 1) * 1.2, -1, 1, 0.025);
+    quad([[a0[0], a0[1], z - w], [a1[0], a1[1], z - w], [a1[0], a1[1], z + w], [a0[0], a0[1], z + w]], i & 1 ? [168, 170, 172] : [70, 66, 60], 0.95);
+  }
+  // Chorreaduras de aceite desde el capó (motor o hélice golpeados): más largas cuanto más gastado el motor.
+  const aceite = d.helice > 0 || d.motorAve > 0 ? 0.35 + 0.65 * Math.min(1, d.motorDesgaste ?? 0) : 0;
+  if (aceite) for (const lado of [1, -1]) for (const [s0, largo] of [[-0.55, 1], [-0.7, 0.7], [-0.85, 0.85]]) {
+    const f1 = 2.2 + 8 * largo * aceite, pts = [];
+    for (let k = 0; k <= 3; k++) { const fs = 2.2 + ((f1 - 2.2) * k) / 3, sh = s0 - 0.05 * k; pts.push(puntoFuselaje(fs, sh, lado, 0.03)); }
+    const ancho = [0.06, 0.05, 0.035, 0.015];
+    for (let k = 0; k < 3; k++) quad([[pts[k][0], pts[k][1] + ancho[k] / PIE, pts[k][2]], [pts[k + 1][0], pts[k + 1][1] + ancho[k + 1] / PIE, pts[k + 1][2]], [pts[k + 1][0], pts[k + 1][1] - ancho[k + 1] / PIE, pts[k + 1][2]], [pts[k][0], pts[k][1] - ancho[k] / PIE, pts[k][2]]], [34, 26, 16], 0.85);
+  }
+  // La cola raspada (la nariz muy arriba al tocar): abajo, cerca del final del fuselaje.
+  if (d.cola) for (let i = -1; i <= 1; i++) { const z = (i * 0.1) / PIE, w = 0.03 / PIE, a0 = puntoFuselaje(21.5, -1, 1, 0.025), a1 = puntoFuselaje(25.5, -1, 1, 0.025); quad([[a0[0], a0[1], z - w], [a1[0], a1[1], z - w], [a1[0], a1[1], z + w], [a0[0], a0[1], z + w]], i ? [80, 76, 70] : [170, 170, 172], 0.95); }
+  // El borde de ataque abollado (un pájaro): una mancha hundida y más oscura en el ala de ese lado.
+  if (d.borde) { const bl = 6.2 * d.borde, wl = wlAla(bl); const c = Pmodelo(7.62, bl, wl - 0.05); quad([[c[0] + 0.02, c[1] + 0.09, c[2] - 0.22], [c[0] + 0.02, c[1] + 0.09, c[2] + 0.22], [c[0] + 0.03, c[1] - 0.07, c[2] + 0.18], [c[0] + 0.03, c[1] - 0.07, c[2] - 0.18]], [118, 116, 112], 0.95, { luz: 0.4 }); }
+  // El parabrisas rajado: una estrella de grietas finas sobre el vidrio (del lado derecho, como en la cabina dibujada).
+  if (d.parabrisas > 0) {
+    const centro = [6.55, 0.72], rayos = [[0.5, 0.1], [-0.6, 0.18], [0.25, -0.2], [-0.3, -0.24], [0.7, -0.04], [-0.1, 0.24]];
+    for (const [dfs, ds] of rayos) {
+      const p = [0, 0.4, 0.75, 1].map((k, j) => puntoFuselaje(centro[0] + dfs * k + (j % 2 ? 0.05 : -0.04) * k, Math.min(0.97, centro[1] + ds * k), 1, 0.04));
+      out.push({ t: 'l', p: p.map(L), c: [240, 246, 250], a: 0.9, w: 1.2, grupo: 'avion' });
+    }
+  }
+  return out;
+}
+
+// 0.14.130: danos (los de juego-danos.js), a la vista: la pata del tren doblada (o plegada, rota) y su carenado caído, la
+// panza raspada, chorreaduras de aceite desde el capó (motor o hélice golpeados), la cola raspada, el borde de ataque
+// abollado, el ala doblada y el parabrisas rajado.
+export function primitivasAvion({ pos, rumbo = 0, cabeceo = 0, alabeo = 0, escala = 1, helice = 0, luces = true, sombra = null, alerones = 0, profundidad = 0, t = 0, palaDoblada = false, danos = null }) {
   const m = construirAvion(), base = baseAvion(rumbo, cabeceo, alabeo);
   const { F, U, R } = base;
   const L = q => [pos[0] + (F[0] * q[0] + U[0] * q[1] + R[0] * q[2]) * escala, pos[1] + (F[1] * q[0] + U[1] * q[1] + R[1] * q[2]) * escala, pos[2] + (F[2] * q[0] + U[2] * q[1] + R[2] * q[2]) * escala];
   const N = n => [F[0] * n[0] + U[0] * n[1] + R[0] * n[2], F[1] * n[0] + U[1] * n[1] + R[1] * n[2], F[2] * n[0] + U[2] * n[1] + R[2] * n[2]];
-  const out = [];
+  const out = [], d = danos;
+  // (los daños que cambian la forma: la pata doblada o plegada y su carenado caído; las alas dobladas hacia arriba)
+  const ocultas = new Set(), dobla = [];
+  if (d?.tren >= 1) {
+    const k = (d.trenLado || 1) > 0 ? 'D' : 'I', lado = k === 'D' ? 1 : -1;
+    ocultas.add(`carenado${k}`);
+    const a = rad(d.tren >= 2 ? 72 : 16) * -lado, o = m.raizTren[k];
+    dobla.push({ idx: m.partes[`tren${k}`], f: v => girarEje(v, o, [1, 0, 0], Math.cos(a), Math.sin(a)) });
+  }
+  const alas = Math.min(1.5, d?.alas ?? 0);
+  const deforma = dobla.length || alas ? (v, i) => {
+    for (const x of dobla) if (x.idx?.has(i)) return x.f(v);
+    // (el ala doblada: las puntas suben, más cuanto más lejos del fuselaje)
+    if (alas && v[1] > 0.95 && Math.abs(v[2]) > 0.7) return [v[0], v[1] + alas * 0.12 * ((Math.abs(v[2]) - 0.7) / 5) ** 2, v[2]];
+    return v;
+  } : null;
   // Los vértices y las normales se pasan al mundo una vez (las caras vecinas los comparten).
-  const caras = (lista, vertices, normales, gV = null, gN = null) => {
-    const W = vertices.map(gV ? v => L(gV(v)) : L), NW = normales.map(gN ? n => N(gN(n)) : N);
-    for (const f of lista) out.push({ t: 'p', p: f.vi.map(i => W[i]), ns: f.ni.map(i => NW[i]), c: f.c, a: 1, luz: 1, n: N(gN ? gN(f.n) : f.n), doble: Boolean(f.doble), grupo: 'avion', brillo: f.brillo ?? 0.3, refleja: f.refleja ?? 0 });
+  const caras = (lista, vertices, normales, gV = null, gN = null, conDanos = false) => {
+    const W = conDanos && deforma ? vertices.map((v, i) => L(deforma(v, i))) : vertices.map(gV ? v => L(gV(v)) : L), NW = normales.map(gN ? n => N(gN(n)) : N);
+    for (const f of lista) if (!(f.parte && ocultas.has(f.parte))) out.push({ t: 'p', p: f.vi.map(i => W[i]), ns: f.ni.map(i => NW[i]), c: f.c, a: 1, luz: 1, n: N(gN ? gN(f.n) : f.n), doble: Boolean(f.doble), grupo: 'avion', brillo: f.brillo ?? 0.3, refleja: f.refleja ?? 0 });
   };
-  caras(m.caras, m.vertices, m.normales);
+  caras(m.caras, m.vertices, m.normales, null, null, true);
+  if (d) out.push(...marcasDanos(d, L, N));
   // Las superficies que se mueven, giradas en su bisagra: los alerones (uno sube, el otro baja) y el timón de profundidad.
   for (const mv of m.moviles) {
     const ang = rad(mv.tipo === 'aleron' ? alerones * mv.lado : -profundidad);

@@ -228,6 +228,12 @@ function subpaso(a, m, dt, amb, asistente, limites = asistente) {
   n.combustible = Math.max(0, a.combustible - ((n.pist ? n.pist.flujoGph : VUELO.consumoGph * Math.max(0.15, efectiva)) * dt) / 3600);
   // La presión del aceite sube después del arranque (en verde en menos de 30 s) y baja al apagar.
   if (n.pist) n.aceitePsi = a.aceitePsi + ((anda ? VUELO.aceitePsiNormal : 0) - a.aceitePsi) * Math.min(1, dt / 6);
+  // 0.14.130: el ala dañada pierde combustible; el motor golpeado se gasta de a poco (más rápido con más potencia): la presión
+  // del aceite baja y la temperatura sube en los relojes, después anda áspero y, gastado del todo, se para.
+  if (ef.fugaGph) n.combustible = Math.max(0, n.combustible - (ef.fugaGph * dt) / 3600);
+  if (ef.desgasteS && anda && (a.danos.motorDesgaste ?? 0) < 1) n.danos = { ...a.danos, motorDesgaste: Math.min(1, (a.danos.motorDesgaste ?? 0) + (dt / ef.desgasteS) * (0.3 + 0.7 * n.potencia)) };
+  const gasto = n.danos?.motorDesgaste ?? 0;
+  if (gasto > 0) { n.aceitePsi = Math.min(n.aceitePsi, VUELO.aceitePsiNormal * (1 - 0.85 * gasto)); n.aceiteTemp = Math.max(n.aceiteTemp ?? VUELO.aceiteTempNormal, VUELO.aceiteTempNormal + 75 * gasto); }
   // ---- los mandos ----
   // (0.14.127: los mandos dañados responden menos)
   const pideAlabeo = lim(m.alabeo ?? 0, -1, 1) * (n.enSuelo ? 1 : ef.autAlabeo), pideCabeceo = lim(m.cabeceo ?? 0, -1, 1) * ef.autCabeceo;

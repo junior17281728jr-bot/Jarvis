@@ -143,6 +143,18 @@ function colorFuselaje(k, i) {
   return { c: COLORES.blanco, ...PINTURA };
 }
 
+// 0.14.130: un punto sobre la piel del fuselaje (para las marcas de los daños: la panza raspada, el aceite, la grieta):
+// fs (pies), s (−1 panza … 1 techo), lado (+1 derecha, −1 izquierda), afuera (pies de más, para que no se pise con la piel).
+export function puntoFuselaje(fs, s, lado = 1, afuera = 0.03) {
+  let k = SECCIONES.findIndex(x => x[0] >= fs); if (k <= 0) k = 1; if (k < 0) k = SECCIONES.length - 1;
+  const [f0, w0, t0, p0] = SECCIONES[k - 1], [f1, w1, t1, p1] = SECCIONES[k], u = Math.max(0, Math.min(1, (fs - f0) / (f1 - f0 || 1)));
+  const mw = w0 + (w1 - w0) * u, techo = t0 + (t1 - t0) * u, panza = p0 + (p1 - p0) * u, yc = (techo + panza) / 2, mh = (techo - panza) / 2;
+  const an = mw * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(s), EXP)), 1 / EXP);
+  // (hacia afuera: en el costado, de lado; arriba o abajo, vertical)
+  const ny = Math.sign(s) * Math.abs(s) ** 3, nz = (1 - Math.abs(s) ** 3) * lado, l = Math.hypot(ny, nz) || 1;
+  return P(fs, lado * an + (nz / l) * afuera, yc + s * mh + (ny / l) * afuera);
+}
+
 // ---------- el modelo entero ----------
 // Las medidas del ala (pies): borde de ataque y cuerda según BL; la altura (WL) de la cuerda con el diedro (1.7°).
 const ALA = { raizFs: 7.7, raizC: 5.3, quiebre: 8.5, puntaBl: 17.6, puntaFs: 9.0, puntaC: 3.95, wl: 7.15, diedro: 0.0302, bisagra: 11.75, aleron: [9.6, 16.5] };
@@ -210,10 +222,13 @@ export function construirAvion() {
     const anillos = us.map(u => { const k = Math.max(0.03, forma(u)); return Array.from({ length: 7 }, (_, i) => { const g = (i / 7) * Math.PI * 2; return P(fs + u * largo, bl + Math.sin(g) * ancho * k, Math.max(piso, wlC + Math.cos(g) * alto * k)); }); });
     return rejilla(anillos, mat(COLORES.blanco));
   };
+  // (0.14.130: cada pieza del tren con su nombre, para mostrar los daños: la pata doblada, el carenado que se cayó)
+  const marcar = (lista, parte) => lista.map(f => Object.assign(f, { parte }));
   for (const lado of [1, -1]) {
-    caras.push(...tubo(P(10.5, 1.45 * lado, 2.75), P(10.85, 3.75 * lado, 1.05), 0.45 / PIE, 0.12 / PIE, COLORES.pata, PINTURA, 4));
-    caras.push(...rueda(10.9, 4.15 * lado, 0.72, 0.5));
-    caras.push(...carenado(10.85, 4.15 * lado, 1.0, 1.5, 0.42, 0.86, 0.42));
+    const k = lado > 0 ? 'D' : 'I';
+    caras.push(...marcar(tubo(P(10.5, 1.45 * lado, 2.75), P(10.85, 3.75 * lado, 1.05), 0.45 / PIE, 0.12 / PIE, COLORES.pata, PINTURA, 4), `tren${k}`));
+    caras.push(...marcar(rueda(10.9, 4.15 * lado, 0.72, 0.5), `tren${k}`));
+    caras.push(...marcar(carenado(10.85, 4.15 * lado, 1.0, 1.5, 0.42, 0.86, 0.42), `carenado${k}`));
   }
   caras.push(...tubo(P(3.9, 0, 2.7), P(3.35, 0, 0.75), 0.24 / PIE, 0.24 / PIE, COLORES.pata, PINTURA, 6));
   caras.push(...rueda(3.3, 0, 0.6, 0.42));
@@ -262,9 +277,14 @@ export function construirAvion() {
     return { vertices, normales };
   };
   const fijo = indexar(caras);
+  // (los vértices de cada pieza con nombre: para doblarla en el mundo sin tocar las demás)
+  const partes = {};
+  for (const f of caras) if (f.parte) { (partes[f.parte] ??= new Set()); for (const i of f.vi) partes[f.parte].add(i); }
   for (const mv of moviles) Object.assign(mv, indexar(mv.caras));
   cache = Object.freeze({
-    caras, moviles, pala, sombra, vertices: fijo.vertices, normales: fijo.normales,
+    caras, moviles, pala, sombra, vertices: fijo.vertices, normales: fijo.normales, partes,
+    // (dónde se dobla cada pata: arriba, junto al fuselaje)
+    raizTren: { D: P(10.5, 1.45, 2.75), I: P(10.5, -1.45, 2.75) },
     nariz: P(HELICE.fs, 0, HELICE.wl), radioHelice: 3.1 / PIE,
     luces: { izquierda: P(fsP + 0.6, -(ALA.puntaBl + 0.5), yTip), derecha: P(fsP + 0.6, ALA.puntaBl + 0.5, yTip), cola: P(27.25, 0, 5.0), baliza: P(25.3, 0, COLA.vTope + 0.12) },
     yAla: z => (wlAla(Math.abs(z) * PIE) - WL0) / PIE,

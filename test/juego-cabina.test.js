@@ -697,3 +697,36 @@ test('0.14.129: la cabina 3D sin esquinas falsas (curvas, costados tapizados, te
   assert.match(vista, /zoomTablero\.hasta = si \? performance\.now\(\) \+ 8000 : 0;/);
   assert.match(vista, /let cabina3dOn = false;/, 'sigue en prueba');
 });
+
+test('0.14.130: más detalle de los daños: el motor golpeado se gasta de a poco (aceite, temperatura, áspero, se para), la fuga de combustible y los daños a la vista', async () => {
+  const D = await import('../public/clase/juego-danos.js'), M3 = await import('../public/clase/motor3d.js');
+  const sd = D.sinDanos();
+  // El motor con un pájaro adentro: la presión del aceite baja y la temperatura sube; gastado, anda áspero; al final se para.
+  const volar = (pot, seg) => { let a = { ...crearAvion({ ft: 5000, kt: 100, potencia: pot, enSuelo: false }), danos: { ...sd, motorAve: 1 } }; const marcas = []; for (let i = 0; i < seg * 60; i++) { a = pasoVuelo(a, { potencia: pot }, 1 / 60); if (i % 600 === 0) marcas.push(a); } return { a, marcas }; };
+  const r = volar(1, 300);
+  const [m0, m1] = [r.marcas[1], r.marcas[12]];
+  assert.ok(m1.aceitePsi < m0.aceitePsi - 15 && m1.aceiteTemp > m0.aceiteTemp + 20, `aceite ${m0.aceitePsi.toFixed(0)}→${m1.aceitePsi.toFixed(0)} psi, ${m0.aceiteTemp.toFixed(0)}→${m1.aceiteTemp.toFixed(0)} °F`);
+  assert.ok(r.a.danos.motorDesgaste >= 1 && D.efectosDanos(r.a.danos).motorPara && r.a.rpm < 1500, 'gastado del todo, se para');
+  assert.ok(D.listaDanos(r.a.danos).includes('motor_aceite'));
+  // Con menos potencia dura más.
+  assert.ok(volar(0.45, 240).a.danos.motorDesgaste < volar(1, 240).a.danos.motorDesgaste - 0.2);
+  // El ala abollada pierde combustible: el indicador baja más rápido.
+  const lim11 = x => Math.max(-1, Math.min(1, x));
+  const gastar = danos => { let a = { ...crearAvion({ ft: 5000, kt: 100, potencia: 0.65, enSuelo: false }), danos }; for (let i = 0; i < 180 * 60; i++) a = pasoVuelo(a, { potencia: 0.65, alabeo: lim11(-a.alabeo / 10) }, 1 / 60); assert.ok(!a.choque); return 40 - a.combustible; };
+  const sano = gastar(null), roto = gastar({ ...sd, borde: 1 });
+  assert.ok(roto > sano + 0.15, `fuga: ${roto.toFixed(2)} gal y ${sano.toFixed(2)} gal en 3 min`);
+  assert.ok(D.listaDanos({ ...sd, borde: 1 }).includes('fuga'));
+  const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
+  for (const k of ['motor_aceite', 'fuga']) for (const x of [`juego.dano.${k}`, `juego.dano.${k}.que`]) assert.ok(es[x] && en[x], x);
+  // A la vista: la pata doblada sin su carenado, la panza raspada, el aceite, la cola raspada, el borde abollado y la grieta.
+  const base = { pos: [0, 0, 0], rumbo: 10 };
+  const sanoP = M3.primitivasAvion(base), malo = M3.primitivasAvion({ ...base, danos: { ...sd, tren: 1, trenLado: 1, panza: 1, helice: 0.5, cola: 1, borde: 1, parabrisas: 1, alas: 1 } });
+  assert.ok(malo.filter(q => q.t === 'l').length >= 5, 'la grieta del parabrisas');
+  assert.ok(malo.some(q => q.t === 'p' && q.c[0] === 34 && q.c[1] === 26), 'chorreaduras de aceite');
+  assert.ok(malo.filter(q => q.t === 'p' && q.grupo === 'avion').every(q => q.p.every(v => v.every(Number.isFinite))));
+  const caras = ps => ps.filter(q => q.t === 'p' && q.ns).length;
+  assert.ok(caras(malo) < caras(sanoP), 'el carenado de esa rueda se cayó');
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /const otros = listaDanos\(avion\.danos\)\.filter\(x => !danosVistos\.has\(x\)\);/);
+  assert.match(leer('clase/juego-mundo.js'), /danos: d \?\? null/);
+});
