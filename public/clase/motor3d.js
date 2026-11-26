@@ -230,7 +230,7 @@ function girarEje(v, o, u, c, s) {
 const CERO = [0, 0, 0];
 // Las primitivas del avión en el mundo: pos, rumbo, cabeceo, alabeo, escala y el ángulo de la hélice (radianes).
 // alerones y profundidad: cuánto se mueven (grados; alerones + = el derecho baja); t: el reloj (destello de las luces).
-export function primitivasAvion({ pos, rumbo = 0, cabeceo = 0, alabeo = 0, escala = 1, helice = 0, luces = true, sombra = null, alerones = 0, profundidad = 0, t = 0 }) {
+export function primitivasAvion({ pos, rumbo = 0, cabeceo = 0, alabeo = 0, escala = 1, helice = 0, luces = true, sombra = null, alerones = 0, profundidad = 0, t = 0, palaDoblada = false }) {
   const m = construirAvion(), base = baseAvion(rumbo, cabeceo, alabeo);
   const { F, U, R } = base;
   const L = q => [pos[0] + (F[0] * q[0] + U[0] * q[1] + R[0] * q[2]) * escala, pos[1] + (F[1] * q[0] + U[1] * q[1] + R[1] * q[2]) * escala, pos[2] + (F[2] * q[0] + U[2] * q[1] + R[2] * q[2]) * escala];
@@ -253,7 +253,9 @@ export function primitivasAvion({ pos, rumbo = 0, cabeceo = 0, alabeo = 0, escal
   const nz = m.nariz;
   for (const g0 of [0, Math.PI]) {
     const c = Math.cos(helice + g0), s = Math.sin(helice + g0);
-    const gira = v => [v[0], nz[1] + (v[1] - nz[1]) * c - v[2] * s, (v[1] - nz[1]) * s + v[2] * c];
+    // (0.14.123: una pala doblada por el golpe: más corta y torcida hacia atrás)
+    const dobla = palaDoblada && g0 ? v => { const r = Math.hypot(v[1] - nz[1], v[2]); const k = r > m.radioHelice * 0.45 ? 0.75 : 1; return [v[0] + (k < 1 ? (r - m.radioHelice * 0.45) * 0.6 : 0), nz[1] + (v[1] - nz[1]) * k, v[2] * k]; } : v => v;
+    const gira = v0 => { const v = dobla(v0); return [v[0], nz[1] + (v[1] - nz[1]) * c - v[2] * s, (v[1] - nz[1]) * s + v[2] * c]; };
     for (const f of m.pala) { const p = f.p.map(gira); out.push({ t: 'p', p: p.map(L), c: f.c, a: 1, luz: 0.8, n: N(normalDe(p)), doble: true, grupo: 'avion', brillo: f.brillo }); }
   }
   const rh = m.radioHelice;

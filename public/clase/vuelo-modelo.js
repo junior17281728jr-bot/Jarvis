@@ -6,6 +6,7 @@
 // Unidades del estado: kt (velocidad), ft (altitud), grados (rumbo, cabeceo, alabeo), ft/min (vs).
 import { tasaDeGiro, inclinacionCoordinador, agujaAnemometro, agujasAltimetro, agujaVariometro } from './instrumentos.js';
 import { pasoMotor } from './motor-piston.js';
+import { efectosDanos } from './juego-danos.js';
 
 export const VUELO = Object.freeze({
   perdidaKt: 48, // velocidad de pérdida sin flaps (alas niveladas)
@@ -159,10 +160,13 @@ function subpaso(a, m, dt, amb, asistente) {
     anda = anda && n.pist.enMarcha;
     efectiva = anda ? efectiva * n.pist.factor : 0;
   }
+  // 0.14.123: los daños (juego-danos.js): la hélice o el motor golpeados empujan menos y vibran (o el motor se para).
+  const ef = efectosDanos(a.danos);
+  if (a.danos) { efectiva *= ef.potencia; if (ef.motorPara) anda = false; }
   // 0.14.119: boca abajo (o con G negativos) el carburador se queda sin combustible: tose y casi no empuja.
   n.tose = invertido(a);
   if (n.tose) { efectiva *= 0.15; n.rugido = Math.max(n.rugido ?? 0, 0.7); } else if (a.tose) n.rugido = 0;
-  const aspero = Math.max(n.rugido, n.pist?.aspereza ?? 0);
+  const aspero = Math.max(n.rugido, n.pist?.aspereza ?? 0, ef.rugido);
   const vibra = aspero > 0 ? aspero * 260 * Math.sin(n.t * 7.3) * Math.sin(n.t * 2.1 + 1) : 0;
   const rpmMeta = anda ? VUELO.rpmRalenti + (VUELO.rpmMax - 200 - VUELO.rpmRalenti) * efectiva + n.kt * 2 + vibra : n.pist?.girando ? 260 : (n.kt > 50 ? n.kt * 9 : 0);
   n.rpm = lim(hacia(a.rpm, rpmMeta, 1600 * dt), 0, VUELO.rpmMax + 200);
@@ -175,10 +179,11 @@ function subpaso(a, m, dt, amb, asistente) {
   let alfa = a.cabeceo - grad(a.gamma);
   if (n.enSuelo) {
     // En el suelo: el alabeo es la dirección (pedales y rueda de nariz); la nariz se levanta con velocidad.
-    n.alabeo = hacia(a.alabeo, 0, 30 * dt);
+    // (0.14.123: con el tren roto, quedado inclinado hacia ese lado)
+    n.alabeo = hacia(a.alabeo, ef.inclinacion, 30 * dt);
     // (el viento cruzado gira la nariz hacia el viento, más cuanto más rápido rueda, hasta unos 15 kt; en el agua también)
     const w0 = amb.viento ?? { desde: 0, kt: 0 }, cruzado = (w0.kt ?? 0) * Math.sin(rad((w0.desde ?? 0) - a.rumbo));
-    n.rumbo = norm360(a.rumbo + pideAlabeo * 14 * lim(a.kt / 20, 0, 1) * dt + VELETA * cruzado * lim(a.kt / 15, 0, 1) * dt);
+    n.rumbo = norm360(a.rumbo + pideAlabeo * 14 * lim(a.kt / 20, 0, 1) * dt + VELETA * cruzado * lim(a.kt / 15, 0, 1) * dt + ef.tiron * lim(a.kt / 20, 0, 1) * dt);
     const puede = a.kt >= VUELO.rotacionKt - 8 ? 12 : 0;
     n.cabeceo = lim(a.cabeceo + (pideCabeceo > 0.1 ? 8 : -6) * dt, 0, puede);
     alfa = n.cabeceo;
@@ -186,7 +191,7 @@ function subpaso(a, m, dt, amb, asistente) {
     // Alabeo con inercia: la tasa (p) va hacia lo que pide el yugo en unos 0.35 s (con amortiguación).
     let pMeta = pideAlabeo * 50;
     if (asistente && Math.abs(pideAlabeo) < 0.08) pMeta = lim(-a.alabeo * 0.6, -10, 10); // nivela, suave
-    n.p = (a.p ?? 0) + (pMeta - (a.p ?? 0)) * Math.min(1, dt / 0.35);
+    n.p = (a.p ?? 0) + (pMeta - (a.p ?? 0)) * Math.min(1, dt / 0.35) + ef.alabeo * dt; // (0.14.123: un ala dañada tira)
     n.alabeo = maxAlabeo >= 180 ? n180(a.alabeo + n.p * dt) : lim(a.alabeo + n.p * dt, -maxAlabeo, maxAlabeo);
     // La estabilidad del avión (como uno compensado): con el yugo suelto el ángulo de ataque vuelve al compensado (en
     // ~0.5 s) y la nariz sigue a la trayectoria (con algo de amortiguación del fugoide); con el yugo movido, el cabeceo tiene
@@ -284,6 +289,7 @@ function subpaso(a, m, dt, amb, asistente) {
     // 0.14.118: los frenos (0..1: el pedal o el freno de mano): hasta ~10 kt por segundo (más que el empuje a fondo: con
     // el freno de mano puesto el avión no se mueve).
     if (!n.agua && (m.freno ?? 0) > 0) n.kt = Math.max(0, n.kt - lim(m.freno, 0, 1) * 10 * dt);
+    if (!n.agua && ef.frenoSuelo) n.kt = Math.max(0, n.kt - ef.frenoSuelo * dt);
   } else n.agua = false;
   // Los flaps bajan y suben despacio (para el indicador: unos 4 s).
   n.flapsPos = hacia(a.flapsPos ?? flaps, flaps, dt / 4);

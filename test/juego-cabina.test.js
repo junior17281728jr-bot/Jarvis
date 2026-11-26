@@ -421,3 +421,62 @@ test('0.14.122: la sombra del avión (con el sol, según la altura), las marcas 
   assert.match(css, /\.juego-escenario \.juego-aviso \{ top: calc\(max\(6px, env\(safe-area-inset-top\)\) \+ 54px\); left: calc\(var\(--reserva-izq, 0px\) \+ 8px\); right: calc\(var\(--reserva-der, 0px\) \+ 8px\);/);
   assert.match(css, /\.juego-aviso\.juego-aviso-corto \{ background: rgba\(14,17,22,0\.84\)/);
 });
+
+test('0.14.123: los daños poco a poco (no «se acabó»), los pájaros y la mini-clase del choque con pájaros', async () => {
+  const D = await import('../public/clase/juego-danos.js');
+  const { MINICLASES } = await import('../public/clase/juego-miniclases.js');
+  const tq = (o = {}) => ({ kt: 62, vs: -200, alabeo: 0, cabeceo: 4, dentro: true, ...o });
+  // Un buen aterrizaje: nada. Duro (700 ft/min): el tren se dobla. Muy duro (1,200): se rompe. Imposible (2,000): termina.
+  assert.deepEqual(D.clasificarImpacto(tq()).nuevos, []);
+  assert.deepEqual(D.clasificarImpacto(tq({ vs: -700 })).nuevos, ['tren_doblado']);
+  const roto = D.clasificarImpacto(tq({ vs: -1200, alabeo: 5 }));
+  assert.ok(!roto.fatal && roto.nuevos.includes('tren_roto') && roto.danos.trenLado === 1);
+  assert.ok(D.clasificarImpacto(tq({ vs: -2000 })).fatal);
+  assert.ok(D.clasificarImpacto(tq({ alabeo: 50 })).fatal);
+  // La nariz abajo: golpe de hélice; un ala baja: la punta raspada (de ese lado); la nariz muy arriba: la cola; de costado: la goma.
+  assert.ok(D.clasificarImpacto(tq({ vs: -500, cabeceo: -5 })).nuevos.includes('helice'));
+  assert.equal(D.clasificarImpacto(tq({ alabeo: -15 })).danos.puntaAla, -1);
+  assert.ok(D.clasificarImpacto(tq({ cabeceo: 15 })).nuevos.includes('cola'));
+  assert.ok(D.clasificarImpacto(tq({ alabeo: 9 })).nuevos.includes('goma'));
+  // En el pasto, rápido: el tren se dobla. En el agua: nada aquí (el juez del amarizaje).
+  assert.ok(D.clasificarImpacto(tq({ dentro: false, kt: 60 })).nuevos.includes('tren_doblado'));
+  assert.deepEqual(D.clasificarImpacto(tq({ agua: true, vs: -1500 })).nuevos, []);
+  // Los daños se suman (no se pierden con el próximo toque) y solo lo nuevo se avisa.
+  const dos = D.clasificarImpacto(tq({ vs: -700, cabeceo: -5 }), roto.danos);
+  assert.ok(dos.danos.tren === 2 && dos.nuevos.includes('helice') && !dos.nuevos.includes('tren_roto'));
+  // Lo que hacen: la hélice dañada empuja menos y vibra (rota: el motor se para); el tren roto tira y frena en el suelo y
+  // queda inclinado; la punta raspada hace alabear en el aire.
+  const e = D.efectosDanos(dos.danos);
+  assert.ok(e.potencia < 0.8 && e.rugido > 0.5 && e.tiron > 0 && e.frenoSuelo > 0 && e.inclinacion > 0);
+  assert.ok(D.efectosDanos({ ...D.sinDanos(), helice: 1 }).motorPara);
+  assert.ok(D.efectosDanos({ ...D.sinDanos(), puntaAla: -1 }).alabeo < 0);
+  // En el modelo: con el tren roto el avión tira hacia ese lado y frena; con un ala dañada, alabea solo.
+  const rodar = danos => { let a = { ...crearAvion({}), kt: 40, danos }; for (let i = 0; i < 120; i++) a = pasoVuelo(a, { potencia: 0 }, 1 / 60); return a; };
+  const sano = rodar(null), danado = rodar(roto.danos);
+  assert.ok(danado.kt < sano.kt - 5 && Math.abs(((danado.rumbo + 540) % 360) - 180) > 3 && danado.alabeo > 3);
+  let v = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos: { ...D.sinDanos(), borde: 1 } };
+  for (let i = 0; i < 180; i++) v = pasoVuelo(v, { potencia: 0.65 }, 1 / 60);
+  assert.ok(v.alabeo > 3, 'el ala abollada tira (~1.75°/s sin corregir)');
+  // Los pájaros (AIM 7-5): el parabrisas, el borde de ataque o el motor.
+  assert.deepEqual([...D.PARTES_AVE], ['parabrisas', 'borde', 'motor']);
+  assert.deepEqual(D.listaDanos(D.danoAve(null, 'parabrisas')), ['parabrisas']);
+  assert.equal(D.danoAve(null, 'borde', -1).borde, -1);
+  assert.ok(D.efectosDanos(D.danoAve(null, 'motor')).potencia < 1);
+  assert.equal(D.AVES.bajoFt, 3000); assert.match(D.AVES.fuente, /AIM 7-5/);
+  // La mini-clase: 3 pasos (volar, evaluar, avisar), con el golpe dado al empezar.
+  const mc = MINICLASES.find(m => m.id === 'pajaros');
+  assert.deepEqual(mc.pasos.map(p => p.id), ['volar', 'evaluar', 'avisar']);
+  assert.ok(mc.pasos.every(p => p.ave?.length));
+  const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
+  for (const k of ['juego.mc.pajaros.titulo', 'juego.mc.pajaros.linea', ...['volar', 'evaluar', 'avisar'].flatMap(p => [`juego.mc.pajaros.${p}`, `juego.mc.pajaros.${p}.clave`]),
+    'juego.pajaros', 'juego.pajaros.adelante', 'juego.ave.titulo', 'juego.ave.que', ...D.PARTES_AVE.map(p => `juego.ave.${p}`),
+    'juego.dano.titulo', 'juego.dano.ninguno', 'juego.dano.cuantos', ...['tren_doblado', 'tren_roto', 'helice', 'punta_ala', 'cola', 'goma'].flatMap(id => [`juego.dano.${id}`, `juego.dano.${id}.que`]),
+    'juego.dano.parabrisas', 'juego.dano.borde', 'juego.dano.motor_ave']) assert.ok(es[k] && en[k], k);
+  // En el juego: los toques se clasifican antes del «choque»; el parabrisas rajado se dibuja en la cabina.
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /if \(avion\.choque && !antes\.choque && !imp\.fatal\) avion = \{ \.\.\.avion, choque: false/);
+  assert.match(vista, /grieta: avion\.danos\?\.parabrisas/);
+  const { ctx, ops } = contexto();
+  dibujarCabina(ctx, 1000, 600, datos(), { escala: 1, completo: true, extras: { ...EX, grieta: 1 } });
+  assert.ok(ops.filter(o => o[0] === 'lineTo').length > 40, 'las grietas');
+});

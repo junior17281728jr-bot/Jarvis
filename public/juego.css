@@ -693,3 +693,9 @@ body.juego-activo { overflow: hidden; }
 .juego-barra .juego-boton { white-space: nowrap; }
 .juego-barra-botones { flex-wrap: nowrap; }
 @media (max-width: 430px) { .juego-barra .juego-boton { padding: 4px 8px; font-size: 11.5px; } .juego-vuelo .juego-camara { min-width: 0 !important; } .juego-barra-izq { gap: 5px; } }
+/* 0.14.123: los daños, en el panel de información. */
+.juego-info-danos { margin: 0; color: #ffb4ac; font: 800 11.5px/1.2 system-ui, -apple-system, sans-serif; }
+.juego-info-danos[hidden] { display: none; }
+.juego-res-danos { color: #c62f26; font-weight: 700; }
+:root[data-tema="oscuro"] .juego-res-danos { color: #ff8278; }
+.juego-vuelo[data-modo="clase"] .juego-escenario .juego-fila2 .juego-chip { display: none; }

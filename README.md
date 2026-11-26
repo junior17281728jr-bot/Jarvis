@@ -716,6 +716,22 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.123: los daños poco a poco y los pájaros — sin cambio de base
+
+- **Los daños** (el dueño: «en un choque pequeño… deja de funcionar; tiene que ser como en la vida real»; `clase/juego-danos.js`):
+  cada toque se clasifica por el descenso, la velocidad, la actitud y dónde tocó: tren doblado (más de 600 ft/min) o roto (más
+  de 1,100), golpe de hélice (nariz abajo), punta del ala raspada (ala baja), golpe de cola (nariz muy arriba), goma reventada
+  (de costado o muy rápido), el pasto a mucha velocidad. El vuelo sigue con sus consecuencias (`efectosDanos` en el modelo:
+  menos potencia y vibración, el avión que tira y frena e inclinado con el tren roto, la tendencia a alabear) y se ven en el
+  avión (la pala doblada, la punta raspada, chispas). Solo lo imposible de sobrevivir (más de 1,800 ft/min, más de 45° de
+  alabeo o la nariz clavada) termina el vuelo. Cada daño trae qué hace un piloto de verdad (AFH cap. 9); la lista en el Menú
+  y «⚠ Daños: n» en el panel de información; los jueces del aterrizaje y del amarizaje, iguales.
+- **Los pájaros** (Menú → «Pájaros»; AIM 7-5): bandadas cerca de los aeropuertos por debajo de 3,000 ft (más al atardecer), el
+  aviso «sube» (las bandadas se reparten hacia abajo) y el choque: el parabrisas rajado (se ve en la cabina), el borde de
+  ataque abollado (tira hacia un lado) o el motor (vibra y empuja menos), con el procedimiento: volar el avión, evaluar,
+  aterrizar en el más cercano y reportar. La mini-clase «Choque con pájaros» (volar, evaluar, avisar).
+- Pruebas: `test/juego-cabina.test.js`.
+
 ### Lo nuevo de la 0.14.122: la altura a ojo (sombra, suelo con escala, marcas de la pista) — sin cambio de base
 
 - **La sombra del avión** (el dueño: «no puedo saber muy bien si estoy muy pegado del suelo… y la sombra del avión ponle»;

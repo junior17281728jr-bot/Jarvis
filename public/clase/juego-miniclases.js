@@ -49,6 +49,15 @@ export const MINICLASES = Object.freeze([
       { id: 'viento', inicio: { z: LAGO.z - LAGO.az - 6, ft: 2000, kt: 70, combustible: 0 } },
       { id: 'tocar', inicio: { z: LAGO.z - LAGO.az + 8, ft: 1000, kt: 70, combustible: 0 } },
     ] },
+  // 0.14.123: el choque con pájaros (pedido del dueño): cerca del aeropuerto A, a 1,500 ft. 1) Un pájaro raja el parabrisas:
+  // primero volar el avión. 2) Otro golpea el motor (vibra y empuja menos): evaluar y decidir aterrizar en el más cercano.
+  // 3) En final: aterrizar con el avión dañado y avisar (radio y el reporte de la FAA). AIM 7-5-2 y 7-5-3.
+  { id: 'pajaros', icono: 'atencion', hora: 'atardecer', inicio: { x: 0, z: UMBRAL_Z + 4, ft: 1500, rumbo: 360, kt: 95, potencia: 0.65, flaps: 0, enSuelo: false }, congelar: false, fuente: 'AIM 7-5-1 · 7-5-2 · 7-5-3',
+    pasos: [
+      { id: 'volar', ave: ['parabrisas'] },
+      { id: 'evaluar', ave: ['parabrisas', 'motor'], inicio: { x: 0, z: UMBRAL_Z - 6, rumbo: 360, ft: 1500 } },
+      { id: 'avisar', ave: ['parabrisas', 'motor'], inicio: enFinalA(2) },
+    ] },
   // Las escenas 3D de las clases, tal cual.
   { id: 'espacio-aereo', icono: 'escudo', escena: 'espacio-aereo' },
   { id: 'minimos-vfr', icono: 'nube', escena: 'minimos-vfr' },

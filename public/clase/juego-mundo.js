@@ -2,7 +2,7 @@
 // tiempo. Se arma UNA vez por paleta (con WebGL se sube una sola vez: la misma lista en cada cuadro).
 // Unidades: 1 = 1,000 ft (como el circuito 3D). Reusa las piezas de las escenas 3D (e3d-base.js y motor3d.js).
 import { aeropuerto, campo, cumulo } from './e3d-base.js';
-import { ruido, aleatorio, primitivasAvion, poligono, mezclarColor } from './motor3d.js';
+import { ruido, aleatorio, primitivasAvion, poligono, mezclarColor, baseAvion, bola as bolaMundo, modeloAvion as construirAvionMundo } from './motor3d.js';
 import { PISTA, PISTA_B, VUELO, LAGO, enAgua, radioLago } from './vuelo-modelo.js';
 import { marcasPista, detalleSuelo } from './juego-suelo.js';
 
@@ -88,12 +88,20 @@ export function construirMundo(paleta, { conNubes = true, sol = undefined } = {}
 }
 
 // El avión propio (para la vista de afuera): en el mundo, con la sombra en el suelo.
-export function avionPropio(a, { t = 0, yugo = { alabeo: 0, cabeceo: 0 }, luces = true } = {}) {
-  return primitivasAvion({
+// 0.14.123: con los daños a la vista: la pala doblada, la punta del ala raspada y, con el tren roto en el suelo, chispas.
+export function avionPropio(a, { t = 0, yugo = { alabeo: 0, cabeceo: 0 }, luces = true, reducir = false } = {}) {
+  const d = a.danos, extra = [];
+  if (d?.puntaAla || (d?.tren >= 2 && a.enSuelo && a.kt > 2)) {
+    const m = construirAvionMundo(), base = baseAvion(a.rumbo, a.cabeceo, a.alabeo), pos = posicionAvion(a);
+    const L = q => [pos[0] + (base.F[0] * q[0] + base.U[0] * q[1] + base.R[0] * q[2]) * ESCALA_AVION, pos[1] + (base.F[1] * q[0] + base.U[1] * q[1] + base.R[1] * q[2]) * ESCALA_AVION, pos[2] + (base.F[2] * q[0] + base.U[2] * q[1] + base.R[2] * q[2]) * ESCALA_AVION];
+    if (d.puntaAla) { const q = d.puntaAla > 0 ? m.luces.derecha : m.luces.izquierda; for (const k of [0, 1, 2]) extra.push(bolaMundo(L([q[0] + 0.3 + k * 0.4, q[1] - 0.05, q[2] * (1 - k * 0.03)]), 0.0005, [35, 32, 30], { min: 1.5 })); }
+    if (d.tren >= 2 && a.enSuelo && a.kt > 2 && !reducir) for (let k = 0; k < 4; k++) if ((t * 13 + k * 0.37) % 1 < 0.5) { const q = (d.trenLado || 1) > 0 ? m.luces.derecha : m.luces.izquierda; extra.push(bolaMundo(L([q[0] * 0.3 + k * 0.5, -0.8, q[2] * 0.25]), 0.0007, [255, 190, 90], { tex: 'brillo', min: 2.5, a: 0.9 })); }
+  }
+  return [...extra, ...primitivasAvion({ palaDoblada: Boolean(d?.helice),
     pos: posicionAvion(a), rumbo: a.rumbo, cabeceo: a.cabeceo, alabeo: a.alabeo, escala: ESCALA_AVION,
     // (0.14.122: la sombra va aparte, proyectada con el sol y según la altura: juego-suelo.js)
     helice: t * (a.rpm / 60) * Math.PI * 2 * 0.2, luces, t, alerones: yugo.alabeo * 15, profundidad: yugo.cabeceo * 12, sombra: null,
-  });
+  })];
 }
 export const posicionAvion = a => [a.x, a.ft / VUELO.ftPorUnidad + ALTO_RUEDAS, a.z];
 

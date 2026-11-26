@@ -111,6 +111,7 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
   if (capas) ctx.drawImage(capas.vidrio, 0, Math.floor(G.yp));
   else vidrioFijo(ctx, G, C, escala, 0, conEgt);
   brujula(ctx, ancho / 2, G.techo, G, D.rumbo, C, escala);
+  if (ex.grieta) grieta(ctx, G, escala, ex.grieta);
   mandosVivos(ctx, G, C, escala, T, ex, yugo);
   if (ex.g != null) {
     const g = num(ex.g, 1);
@@ -491,6 +492,24 @@ function agujasVivas(ctx, G, D, C, e, T, ex) {
   o = q('vor'); if (o) vivoVor(ctx, o.x, o.y, o.r, D, C);
   // El flujo de combustible (gal/h), debajo del reloj de la EGT.
   if (ex.egt != null && G.ancha && q('egt')) { const eg = q('egt'); texto(ctx, `${T('ff')} ${num(ex.ff, 0).toFixed(1)}`, eg.x, eg.y + eg.r * 1.45, Math.max(8, eg.r * 0.34), C.texto, 700); }
+}
+
+// 0.14.123: el parabrisas rajado por un pájaro: el golpe (blanco, opaco), las grietas en estrella y un velo alrededor.
+function grieta(ctx, G, e, k) {
+  const x = G.izq + G.anchoUtil * 0.62, y = G.techo + (G.yp - G.techo) * 0.38, R = Math.min(G.anchoUtil, G.yp - G.techo) * 0.42 * Math.min(1, k);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+  g.addColorStop(0, 'rgba(235,240,245,0.55)'); g.addColorStop(0.35, 'rgba(220,226,232,0.22)'); g.addColorStop(1, 'rgba(220,226,232,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1, 1.2 * e); ctx.beginPath();
+  for (let i = 0; i < 11; i++) {
+    let a = (i / 11) * Math.PI * 2 + Math.sin(i * 7.3) * 0.25, px = x, py = y;
+    const largo = R * (0.55 + 0.45 * Math.abs(Math.sin(i * 3.1)));
+    ctx.moveTo(px, py);
+    for (let j = 1; j <= 4; j++) { a += Math.sin(i * 5.7 + j) * 0.18; px = x + Math.cos(a) * largo * (j / 4); py = y + Math.sin(a) * largo * (j / 4); ctx.lineTo(px, py); }
+  }
+  for (const f of [0.25, 0.5]) { ctx.moveTo(x + R * f, y); ctx.arc(x, y, R * f, 0, Math.PI * 2); }
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(250,250,250,0.8)'; ctx.beginPath(); ctx.arc(x, y, R * 0.06, 0, Math.PI * 2); ctx.fill();
 }
 
 // La brújula: colgada arriba en el centro del parabrisas; la tarjeta (con N, 3, 6, E…) corre con el rumbo.
