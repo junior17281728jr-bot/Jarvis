@@ -329,7 +329,7 @@ test('0.14.119: el avión como el de verdad: sin topes sin el Asistente, el fact
   assert.ok(gMax < LIMITES.gMax, `Asistente: ${gMax.toFixed(2)} G`);
   assert.ok(alfaParaCarga(3.3, 130) < 12);
   // Sin el Asistente, el mismo tirón pasa el límite.
-  let b = crucero({ kt: 155, alabeo: 60 }), gB = 0; // (0.14.127: en un viraje cerrado; derecho, la trayectoria sube sin tope y alivia la carga)
+  let b = crucero({ kt: 155 }), gB = 0; // (0.14.127: con las alas niveladas también: el yugo pide ángulo de ataque, sin tope escondido)
   for (let i = 0; i < 4 * 60; i++) { b = pasoVuelo(b, { cabeceo: 1, potencia: 1 }, 1 / 60); gB = Math.max(gB, b.g); }
   assert.ok(gB > LIMITES.gMax, `sin Asistente: ${gB.toFixed(2)} G`);
   // Boca abajo el motor tose (el carburador por gravedad) y empuja poco.
@@ -530,8 +530,9 @@ test('0.14.127: los daños cambian la física (nunca «deja de funcionar»): tre
   for (let i = 0; i < 120; i++) h = pasoVuelo(h, { potencia: 1 }, 1 / 60);
   assert.ok(h.rpm > 1500, 'sigue andando');
   // Cola dañada: sigue volando, pero el yugo responde menos; muy dañada, la nariz oscila cada vez más.
-  const tirar = danos => { let v = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos }; for (let i = 0; i < 60; i++) v = pasoVuelo(v, { cabeceo: 1, potencia: 0.65 }, 1 / 60); return v.cabeceo; };
-  assert.ok(tirar({ ...sd, elevador: 0.5 }) < tirar(null) - 2, 'responde menos');
+  // (0.14.127: el yugo pide ángulo de ataque: con el timón de profundidad dañado, el mismo tirón da menos G)
+  const tirar = danos => { let v = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos }, g = 0; for (let i = 0; i < 60; i++) { v = pasoVuelo(v, { cabeceo: 0.4, potencia: 0.65 }, 1 / 60); g = Math.max(g, v.g); } return g; };
+  assert.ok(tirar({ ...sd, elevador: 0.5 }) < tirar(null) - 0.4, `responde menos (${tirar({ ...sd, elevador: 0.5 }).toFixed(2)} G y ${tirar(null).toFixed(2)} G)`);
   let c = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos: { ...sd, elevador: 1 } }, max = 0;
   for (let i = 0; i < 20 * 60; i++) { c = pasoVuelo(c, { potencia: 0.65 }, 1 / 60); if (i > 5 * 60) max = Math.max(max, Math.abs(c.cabeceo)); }
   assert.ok(!c.choque && max > 8, `difícil de controlar (cabeceo hasta ${max.toFixed(0)}°)`);
@@ -620,4 +621,55 @@ test('0.14.127: los avisos en una esquina (no pausan ni tapan) y los límites de
   // La tasa de alabeo a fondo: 30 a 60 °/s.
   let r = cr(); for (let i = 0; i < 60; i++) r = pasoVuelo(r, { alabeo: 1, potencia: 0.7 }, 1 / 60, { limites: false });
   assert.ok(r.p >= 30 && r.p <= 60, `p = ${r.p.toFixed(0)} °/s`);
+});
+
+test('0.14.127: la gravedad y la energía como en un avión de entrenamiento (planeo ~8.5:1, subida, picada, pérdida, rizo, 0 G)', async () => {
+  const dt = 1 / 60, lim = (x, a, b) => Math.min(b, Math.max(a, x));
+  const aire = o => ({ ...crearAvion({ ft: 6000, kt: o.kt, potencia: o.potencia ?? 0, enSuelo: false, z: -30, combustible: o.combustible ?? 40 }) });
+  // Un piloto que sostiene una velocidad con el yugo; → la relación de planeo o el régimen de subida (promedio de 30 s).
+  const sostener = (a, meta, pot, seg = 60) => {
+    let prev = a.kt, ac = 0, vs = 0, kt = 0, n = 0;
+    for (let i = 0; i < seg * 60; i++) {
+      const acel = (a.kt - prev) / dt; prev = a.kt; ac = ac * 0.9 + acel * 0.1;
+      const yugo = lim(0.06 * (a.kt - meta) + 0.25 * ac, -1, 1);
+      a = pasoVuelo(a, { cabeceo: Math.abs(yugo) < 0.09 ? Math.sign(yugo) * 0.09 : yugo, potencia: pot }, dt, { limites: false });
+      if (i > seg * 30) { vs += a.vs; kt += a.kt; n++; }
+    }
+    return { vs: vs / n, kt: kt / n };
+  };
+  // Sin motor: el mejor planeo, cerca de 65–70 kt, entre 8 y 9 a 1.
+  let mejor = 0, vMejor = 0;
+  for (let kt = 55; kt <= 85; kt += 2.5) { const r = sostener(aire({ kt, combustible: 0 }), kt, 0); const ratio = (r.kt * 101.27) / -r.vs; if (ratio > mejor) { mejor = ratio; vMejor = kt; } }
+  assert.ok(mejor > 8 && mejor < 9 && vMejor >= 62 && vMejor <= 72, `planeo ${mejor.toFixed(2)}:1 a ${vMejor} kt`);
+  // A fondo, cerca de Vy: sube unos 500–750 ft/min a 3,000 ft.
+  const sube = sostener({ ...aire({ kt: 77.5, potencia: 1 }), ft: 3000 }, 77.5, 1);
+  assert.ok(sube.vs > 500 && sube.vs < 750, `sube ${Math.round(sube.vs)} ft/min`);
+  // La inducida crece con los G: el mismo avión, en un viraje con 2 G, pierde más velocidad que derecho.
+  let d1 = aire({ kt: 100, potencia: 0.6 }), d2 = { ...aire({ kt: 100, potencia: 0.6 }), alabeo: 60 };
+  for (let i = 0; i < 120; i++) { d1 = pasoVuelo(d1, { potencia: 0.6 }, dt, { limites: false }); d2 = pasoVuelo(d2, { cabeceo: 0.45, alabeo: 0, potencia: 0.6 }, dt, { limites: false }); }
+  assert.ok(d2.kt < d1.kt - 5, `con G frena más (${d2.kt.toFixed(1)} y ${d1.kt.toFixed(1)} kt)`);
+  // Un rizo a fondo de potencia: pasa boca abajo arriba y vuelve a volar derecho, sin topes.
+  let r = aire({ kt: 125, potencia: 1 }), boca = false, vuelve = false;
+  for (let i = 0; i < 14 * 60; i++) { r = pasoVuelo(r, { cabeceo: 0.55, potencia: 1 }, dt, { limites: false }); if (Math.abs(r.alabeo) > 150 && r.gamma > -0.2 && r.gamma < 0.3) boca = true; if (boca && Math.abs(r.alabeo) < 5 && r.gamma > 0) vuelve = true; }
+  assert.ok(boca && vuelve && !r.choque, 'rizo completo');
+  // Con 0 G (empujando justo), la trayectoria es un arco balístico: se curva hacia abajo a g·cos(γ)/V.
+  let z = { ...aire({ kt: 100, potencia: 0.7 }), gamma: 0.35, cabeceo: 20 + 4 }, ig = 0;
+  for (let i = 0; i < 90; i++) { ig += z.g * dt; z = pasoVuelo(z, { cabeceo: lim(-1.5 * z.g - 2 * ig, -1, 1), potencia: 0.7 }, dt, { limites: false }); }
+  const curva = z.dgamma, balistica = -((19.06 / z.kt) * Math.cos(z.gamma) * 180) / Math.PI;
+  assert.ok(Math.abs(z.g) < 0.15 && Math.abs(curva - balistica) < 2.5, `0 G: ${curva.toFixed(1)} °/s y la balística ${balistica.toFixed(1)} °/s`);
+  // Boca abajo, sin empujar, la nariz cae hacia el suelo (la sustentación apunta abajo); empujando, se sostiene un rato.
+  let inv = { ...aire({ kt: 110, potencia: 0.8 }), alabeo: 180, cabeceo: 4, gamma: 0 };
+  for (let i = 0; i < 120; i++) inv = pasoVuelo(inv, { potencia: 0.8 }, dt, { limites: false });
+  assert.ok(inv.gamma < -0.3, 'boca abajo sin empujar, pica');
+  // Quien cambia los ángulos desde afuera (el comienzo, una prueba) cambia el avión: el paso siguiente sale de ahí.
+  let w = aire({ kt: 100, potencia: 0.6 }); w = pasoVuelo(w, { potencia: 0.6 }, dt); w = pasoVuelo({ ...w, alabeo: 40 }, { potencia: 0.6 }, dt);
+  assert.ok(Math.abs(w.alabeo - 40) < 2, `alabeo ${w.alabeo.toFixed(1)}`);
+  // Tocar muy de costado (sin corregir la deriva) con el ala de ese lado baja: vuelca sobre la punta del ala.
+  const D = await import('../public/clase/juego-danos.js');
+  const lado = D.clasificarImpacto({ kt: 55, vs: -200, alabeo: 5, cabeceo: 4, dentro: true, lateralKt: 27 });
+  assert.ok(lado.danos.puntaAla === 1 && lado.danos.goma && lado.danos.tren >= 1 && !lado.fatal);
+  assert.equal(D.listaDanos(D.clasificarImpacto({ kt: 55, vs: -200, alabeo: 0, cabeceo: 4, dentro: true, lateralKt: 8 }).danos).length, 0, 'un poco de costado, nada');
+  // Con el Asistente, pasarse poco solo avisa (el daño, solo en los extremos).
+  let dA = null; for (let i = 0; i < 100; i++) dA = D.desgastePaso(dA, { kt: 95, flaps: 1, dt: 0.1, asistente: true }).danos;
+  assert.equal(D.listaDanos(dA).length, 0);
 });

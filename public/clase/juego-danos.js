@@ -15,6 +15,10 @@ export const DANOS = Object.freeze({
   trenDobladoFpm: 600, trenRotoFpm: 1100, fatalFpm: 1800,
   alabeoPuntaGrados: 12, alabeoGomaGrados: 7, alabeoFatalGrados: 45, colaGrados: 13, heliceGrados: -3, heliceFpm: 400, narizFatalGrados: -15,
   pastoTrenKt: 50, gomaKt: 80,
+  // 0.14.127: tocar yendo de costado (sin corregir la deriva) carga el tren de lado (AFH cap. 9): kt de costado respecto de
+  // la nariz (números del modelo) para reventar la goma, doblar el tren y, muy de costado y con el ala de ese lado baja,
+  // volcar sobre la punta del ala.
+  ladoGomaKt: 15, ladoTrenKt: 20, ladoVuelcoKt: 25,
   fuente: 'AFH cap. 9',
 });
 export const AVES = Object.freeze({ bajoFt: 3000, migracion: 'marzo–abril y agosto–noviembre', fuente: 'AIM 7-5-1 · 7-5-2 · 7-5-3' });
@@ -63,6 +67,10 @@ export function clasificarImpacto(toque, antes = null) {
   if (banco > DANOS.alabeoPuntaGrados) nuevo.puntaAla = lado;
   if (nariz > DANOS.colaGrados) { nuevo.cola = 1; nuevo.elevador = fpm > DANOS.trenDobladoFpm ? 0.5 : 0.25; }
   if ((banco > DANOS.alabeoGomaGrados && banco <= DANOS.alabeoPuntaGrados) || kt > DANOS.gomaKt) nuevo.goma = banco > 2 ? lado : 1;
+  const deCostado = Math.abs(toque.lateralKt ?? 0), ladoDeriva = (toque.lateralKt ?? 0) > 0 ? 1 : -1;
+  if (deCostado > DANOS.ladoGomaKt) nuevo.goma = nuevo.goma || ladoDeriva;
+  if (deCostado > DANOS.ladoTrenKt) { nuevo.tren = Math.max(nuevo.tren ?? 0, 1); nuevo.trenLado = nuevo.trenLado || ladoDeriva; }
+  if (deCostado > DANOS.ladoVuelcoKt && (toque.alabeo ?? 0) * ladoDeriva > 3) nuevo.puntaAla = ladoDeriva;
   if (toque.dentro === false && kt > DANOS.pastoTrenKt) { nuevo.tren = Math.max(nuevo.tren ?? 0, 1); nuevo.trenLado = nuevo.trenLado || 1; }
   const danos = juntar(d0, nuevo);
   const antesL = new Set(listaDanos(d0)), nuevos = listaDanos(danos).filter(x => !antesL.has(x));
@@ -108,6 +116,8 @@ export function efectosDanos(d) {
 // despacio (avisos y daño solo en los extremos). turb: 0..1 (la turbulencia de ahora).
 export function desgastePaso(d0, { kt = 0, g = 1, flaps = 0, turb = 0, dt = 0, asistente = false, enSuelo = false, lado = 1 } = {}) {
   const L = LIMITES_VEL, d = { ...sinDanos(), ...(d0 ?? {}) }, avisos = [], k = asistente ? 0.25 : 1;
+  // (con el Asistente: avisa igual, pero el daño empieza solo en los extremos: mucho más allá de cada límite)
+  const m = asistente ? { vfe: 20, vno: 15, vne: 10, g: 0.8 } : { vfe: 0, vno: 0, vne: 0, g: 0 };
   // (nada pasado de los límites: los daños quedan como estaban, el mismo objeto)
   const pasa = !enSuelo && ((flaps > 0.05 && kt > L.vfeKt) || (kt > L.vnoKt && turb > 0.25) || kt > L.vneKt || g > L.gMax || g < L.gMin);
   if (!pasa) return { danos: d0, nuevos: [], avisos, fatal: false };
@@ -115,21 +125,21 @@ export function desgastePaso(d0, { kt = 0, g = 1, flaps = 0, turb = 0, dt = 0, a
   // Flaps afuera más rápido que la VFE: primero sacuden; después se traban; al final uno se daña (asimétricos).
   if (flaps > 0.05 && kt > L.vfeKt) {
     avisos.push('vfe');
-    d.flapEstres += ((kt - L.vfeKt) / 15) * dt * k;
+    if (kt > L.vfeKt + m.vfe) d.flapEstres += ((kt - L.vfeKt) / 15) * dt * k;
     if (d.flapEstres > 1) d.flapAtascado = 1;
     if (d.flapEstres > 2.5 && !d.flapAsim) d.flapAsim = (typeof lado === 'function' ? lado() : lado) || 1;
   }
   // En el arco amarillo con turbulencia: la estructura se cansa.
-  if (kt > L.vnoKt && turb > 0.25) { avisos.push('vno'); d.estres += ((kt - L.vnoKt) / 34) * turb * dt * 0.25 * k; }
+  if (kt > L.vnoKt && turb > 0.25) { avisos.push('vno'); if (kt > L.vnoKt + m.vno) d.estres += ((kt - L.vnoKt) / 34) * turb * dt * 0.25 * k; }
   // Pasada la VNE: el aleteo (flutter) daña los alerones, después el timón de profundidad, y sostenido, la rotura.
   if (kt > L.vneKt) {
     avisos.push('vne');
-    d.flutter += ((kt - L.vneKt + 5) / 15) * dt * k;
+    if (kt > L.vneKt + m.vne) d.flutter += ((kt - L.vneKt + 5) / 15) * dt * k;
     if (d.flutter > 1) d.aleron = Math.max(d.aleron, Math.min(1, (d.flutter - 1) * 0.6));
     if (d.flutter > 2) d.elevador = Math.max(d.elevador, Math.min(1, (d.flutter - 2) * 0.5));
   }
   // Más G que el límite: la estructura se dobla de a poco; con 1.5 veces el límite, se rompe.
-  if (g > L.gMax || g < L.gMin) { avisos.push('g'); d.estres += (g > L.gMax ? g - L.gMax : L.gMin - g) * dt * 0.8 * k; }
+  if (g > L.gMax || g < L.gMin) { avisos.push('g'); if (g > L.gMax + m.g || g < L.gMin - m.g) d.estres += (g > L.gMax ? g - L.gMax : L.gMin - g) * dt * 0.8 * k; }
   if (d.estres > 1) d.alas = Math.max(d.alas, Math.min(1.5, d.estres - 0.5));
   const fatal = (!asistente && (g > L.gMax * L.seguridad || g < L.gMin * L.seguridad)) || d.estres > 3 || d.flutter > 5;
   const nuevos = listaDanos(d).filter(x => !antes.has(x));

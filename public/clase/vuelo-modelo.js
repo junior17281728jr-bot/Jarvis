@@ -99,7 +99,7 @@ export function sustentacion(alfa, flaps = 0) {
   const a0 = 2 + Math.min(1, flaps) * 3 + Math.max(0, flaps - 1) * 1; // con flaps hay sustentación con menos ángulo
   const cmax = flaps ? cmaxFlaps(flaps) : 1;
   if (alfa <= VUELO.alfaPerdida) return lim(((alfa + a0) / (VUELO.alfaPerdida + a0)) * cmax, -0.4, cmax);
-  return cmax * lim(1 - (alfa - VUELO.alfaPerdida) * 0.06, 0.55, 1);
+  return cmax * lim(1 - (alfa - VUELO.alfaPerdida) * 0.09, 0.55, 1); // (0.14.127: la rotura, más marcada)
 }
 
 // 0.14.119: el ángulo de ataque que da un factor de carga n a una velocidad (para el tope del Asistente).
@@ -115,6 +115,58 @@ export function alfaNivel(kt, flaps = 0) {
   const a0 = 2 + Math.min(1, flaps) * 3 + Math.max(0, flaps - 1) * 1, cmax = flaps ? cmaxFlaps(flaps) : 1;
   const cl = Math.min(cmax * 0.95, (VUELO.perdidaKt / Math.max(kt, VUELO.perdidaKt)) ** 2);
   return (cl / cmax) * (VUELO.alfaPerdida + a0) - a0;
+}
+
+// 0.14.127: la física del aire (vuelo-modelo: «la gravedad, que sea más realista»). La resistencia como la de un avión de
+// entrenamiento: la parásita crece con la velocidad al cuadrado y la inducida con el factor de carga al cuadrado y a poca
+// velocidad (D/W = parásito·x + inducido·n²/x, x = (V/Vs)²); sin motor (o en ralentí) la hélice que gira con el viento frena
+// más. Con estos números (los del modelo, no de un manual): planeo de ~8.5:1 cerca de 67 kt, ~120 kt a fondo, ~700 ft/min de
+// subida a nivel del mar.
+export const ARRASTRE = Object.freeze({ parasito: 0.0181, inducido: 0.115, flaps: 0.0133, helice: 0.012, empujeKtS: 5.0, empujeCeroKt: 280 });
+// El empuje (kt/s): la hélice empuja menos con la velocidad y con la altura; sin potencia, frena (gira con el viento).
+export function empujeDe(efectiva, kt, ft) {
+  const x = (kt / VUELO.perdidaKt) ** 2;
+  return ARRASTRE.empujeKtS * efectiva * Math.max(0, 1 - kt / ARRASTRE.empujeCeroKt) * TECHO.factor(ft) - G_KTS * ARRASTRE.helice * x * (1 - Math.min(1, efectiva * 4));
+}
+// El yugo a fondo: el ángulo de ataque que pide (atrás, pasado el crítico: se puede entrar en pérdida a cualquier velocidad;
+// adelante, negativo: G negativos).
+export const YUGO = Object.freeze({ alfaAtras: 24, alfaAdelante: -12, curva: 1.4 });
+const punto = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cruz = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const escalar = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+const sumar = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const norm = a => { const m = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / m, a[1] / m, a[2] / m]; };
+// Girar el vector a alrededor del eje e (unitario) un ángulo (rad, regla de la mano derecha con e).
+const girar = (a, e, ang) => { const c = Math.cos(ang), s = Math.sin(ang), k = punto(e, a), x = cruz(e, a); return [a[0] * c + x[0] * s + e[0] * k * (1 - c), a[1] * c + x[1] * s + e[1] * k * (1 - c), a[2] * c + x[2] * s + e[2] * k * (1 - c)]; };
+const firmaDe = a => `${a.cabeceo}|${a.alabeo}|${a.rumbo}|${a.gamma}`;
+// Los vectores del estado: los que dejó el último paso, o (si alguien cambió los ángulos: el comienzo, el despegue, el rebote,
+// una prueba) armados de los ángulos: v con el rumbo y la trayectoria, l inclinada con el alabeo, el ataque = cabeceo − trayectoria.
+function ejesDe(a) {
+  if (a.ejes && a.ejes.firma === firmaDe(a)) return a.ejes;
+  const g = a.gamma ?? 0, h = rad(a.rumbo ?? 0), mu = rad(a.alabeo ?? 0);
+  const v = [Math.cos(g) * Math.sin(h), Math.sin(g), Math.cos(g) * Math.cos(h)];
+  const u0 = [-Math.sin(g) * Math.sin(h), Math.cos(g), -Math.sin(g) * Math.cos(h)], r0 = [Math.cos(h), 0, -Math.sin(h)];
+  // (el ala derecha abajo: l se inclina a la derecha; derecha = l × v)
+  const l = sumar(escalar(u0, Math.cos(mu)), escalar(r0, Math.sin(mu)));
+  return { v, l, alfa: (a.cabeceo ?? 0) - grad(g) };
+}
+// Con los límites: la sustentación no se inclina más de max grados (respecto de la vertical que pasa por v).
+function bancoMax(v, l, max) {
+  const der = norm(cruz([0, 1, 0], v)), u0 = cruz(v, der); // der: a la derecha; u0: «arriba» en el plano vertical de v
+  const mu = Math.atan2(punto(l, der), punto(l, u0)), m = rad(max);
+  if (Math.abs(mu) <= m) return l;
+  const k = Math.sign(mu) * m;
+  return norm(sumar(escalar(u0, Math.cos(k)), escalar(der, Math.sin(k))));
+}
+// Los ángulos de la escena (grados) del cuerpo del avión: la nariz es v girada «alfa» hacia l.
+function angulosDe(v, l, alfa, rumboAntes = 0) {
+  const ca = Math.cos(rad(alfa)), sa = Math.sin(rad(alfa));
+  const f = sumar(escalar(v, ca), escalar(l, sa)), u = sumar(escalar(l, ca), escalar(v, -sa)), der = cruz(u, f);
+  const th = Math.asin(lim(f[1], -1, 1));
+  const psi = Math.hypot(f[0], f[2]) > 1e-6 ? Math.atan2(f[0], f[2]) : rad(rumboAntes);
+  const uh = [-Math.sin(th) * Math.sin(psi), Math.cos(th), -Math.sin(th) * Math.cos(psi)], rh = [Math.cos(psi), 0, -Math.sin(psi)];
+  const fi = Math.atan2(-punto(der, uh), punto(der, rh));
+  return { cabeceo: grad(th), alabeo: grad(fi), rumbo: norm360(grad(psi)) };
 }
 
 // Un avión nuevo: en la cabecera de la 36 (en el suelo) o en el aire.
@@ -179,8 +231,6 @@ function subpaso(a, m, dt, amb, asistente, limites = asistente) {
   // ---- los mandos ----
   // (0.14.127: los mandos dañados responden menos)
   const pideAlabeo = lim(m.alabeo ?? 0, -1, 1) * (n.enSuelo ? 1 : ef.autAlabeo), pideCabeceo = lim(m.cabeceo ?? 0, -1, 1) * ef.autCabeceo;
-  const maxAlabeo = limites ? VUELO.maxAlabeoAsistente : VUELO.maxAlabeo, maxCab = limites ? VUELO.maxCabeceoAsistente : VUELO.maxCabeceo;
-  let alfa = a.cabeceo - grad(a.gamma);
   if (n.enSuelo) {
     // En el suelo: el alabeo es la dirección (pedales y rueda de nariz); la nariz se levanta con velocidad.
     // (0.14.123: con el tren roto, quedado inclinado hacia ese lado)
@@ -191,98 +241,125 @@ function subpaso(a, m, dt, amb, asistente, limites = asistente) {
     n.rumbo = norm360(a.rumbo + pideAlabeo * 14 * lim(a.kt / 20, 0, 1) * dt + VELETA * cruzado * lim(a.kt / 15, 0, 1) * dt + ef.tiron * lim(a.kt / 20, 0, 1) * dt);
     const puede = a.kt >= VUELO.rotacionKt - 8 ? 12 : 0;
     n.cabeceo = lim(a.cabeceo + (pideCabeceo > 0.1 ? 8 : -6) * dt, 0, puede);
-    alfa = n.cabeceo;
-  } else {
-    // Alabeo con inercia: la tasa (p) va hacia lo que pide el yugo en unos 0.35 s (con amortiguación).
-    let pMeta = pideAlabeo * 50;
-    if (limites && Math.abs(pideAlabeo) < 0.08) pMeta = lim(-a.alabeo * 0.6, -10, 10); // nivela, suave
-    n.p = (a.p ?? 0) + (pMeta - (a.p ?? 0)) * Math.min(1, dt / 0.35) + ef.alabeo * dt; // (0.14.123: un ala dañada tira)
-    n.alabeo = maxAlabeo >= 180 ? n180(a.alabeo + n.p * dt) : lim(a.alabeo + n.p * dt, -maxAlabeo, maxAlabeo);
-    // (0.14.127: la cola dañada: la nariz se va sola y, muy dañada, oscila cada vez más; hay que pelear con el yugo)
-    // (el reloj de la oscilación corre solo desde que la cola está muy dañada: crece de a poco, no de golpe)
-    n.osc = ef.oscila > 0 ? (a.osc ?? 0) + dt : 0;
-    const colaMal = ef.cabeceoExtra + ef.oscila * Math.sin(n.osc * 1.6) * Math.min(14, 3 + n.osc * 0.6);
-    // La estabilidad del avión (como uno compensado): con el yugo suelto el ángulo de ataque vuelve al compensado (en
-    // ~0.5 s) y la nariz sigue a la trayectoria (con algo de amortiguación del fugoide); con el yugo movido, el cabeceo tiene
-    // inercia (q tarda ~0.25 s en tomar la tasa) y la compensación lo sigue. En un viraje la compensación no alcanza: la
-    // sustentación se inclina y hay que tirar (el avión no lo hace solo).
-    const trim = a.trim ?? alfaNivel(a.kt, flaps);
-    n.trim = trim;
-    let cab;
-    if (Math.abs(pideCabeceo) < 0.08) {
-      // (0.14.119: la amortiguación del fugoide actúa sobre el plano del ala: inclinado, ayuda menos; boca abajo, nada. Un
-      // viraje sin tirar baja y la nariz cae, como en el avión de verdad)
-      const alfaMeta = trim - 1.0 * (a.dgamma ?? 0) * Math.max(0, Math.cos(rad(a.alabeo))) + colaMal;
-      cab = alfa + (alfaMeta - alfa) * Math.min(1, dt / 0.5) + grad(a.gamma);
-      n.q = (cab - a.cabeceo) / dt;
-    } else {
-      n.trim = trim + lim(alfa - trim, -5, 5) * dt;
-      n.q = (a.q ?? 0) + (pideCabeceo * 14 + colaMal * 1.6 - (a.q ?? 0)) * Math.min(1, dt / 0.25);
-      cab = a.cabeceo + n.q * dt;
-    }
-    const alfaN = cab - grad(a.gamma);
-    // El Asistente es una ayuda suave: nunca deja pasar de 12° de ataque (no hay pérdida); no fija la altura ni la subida.
-    // (0.14.119: y tampoco deja pasar de unos 3.3 G: con el Asistente, quien empieza no rompe el avión al tirar rápido)
-    const alfaG = alfaParaCarga(3.3, a.kt, flaps);
-    if (limites && alfaN > Math.min(12, alfaG)) { cab = Math.min(12, alfaG) + grad(a.gamma); n.q = Math.min(n.q ?? 0, 0); }
-    // En pérdida, la nariz cae sola (y sin el Asistente, también un ala).
-    if (alfaN > VUELO.alfaPerdida) {
-      cab -= ((alfaN - VUELO.alfaPerdida) * 6 + 12) * dt;
-      if (!limites) n.p += (a.alabeo > 2 ? 1 : -1) * ALA_CAE * dt;
-    }
-    n.cabeceo = lim(cab, limites ? -40 : -maxCab, maxCab);
-    alfa = n.cabeceo - grad(a.gamma);
-  }
-  // ---- velocidad ----
-  const empuje = 4.5 * efectiva * (1 - a.kt / 230) * TECHO.factor(a.ft);
-  const ge = a.agua ? 0 : efectoSuelo(a.ft);
-  n.efectoSuelo = n.enSuelo ? 0 : ge;
-  const resistencia = 0.000163 * a.kt * a.kt + flaps * 0.0002 * a.kt * a.kt + Math.max(0, alfa) ** 2 * 0.012 * (1 - ge) + (n.enSuelo ? 0.8 + (n.potencia < 0.05 && a.kt < 70 ? 4 : 0) : 0);
-  let kt = a.kt + (empuje - resistencia - G_KTS * Math.sin(a.gamma)) * dt;
-  kt = Math.max(0, kt);
-  // ---- trayectoria (gamma: el ángulo de la trayectoria) ----
-  const vMin = Math.max(kt, 20);
-  const cl = sustentacion(alfa, flaps) * (1 + EFECTO_SUELO.masSustentacion * ge);
-  const sobreW = (kt / VUELO.perdidaKt) ** 2 * cl * ef.sustentacion; // sustentación / peso (0.14.127: con las alas dobladas, menos)
-  // El factor de carga (g): la sustentación sobre el peso (en tierra, 1).
-  n.g = n.enSuelo ? 1 : sobreW;
-  n.perdida = !n.enSuelo && alfa > VUELO.alfaPerdida;
-  n.aviso = !n.enSuelo && (alfa > VUELO.alfaPerdida - 3 || kt < (flaps ? VUELO.perdidaFlapsKt : VUELO.perdidaKt) + 5);
-  let gamma = a.gamma;
-  if (n.enSuelo) {
-    gamma = 0;
+    // ---- velocidad en el suelo (el empuje, el aire y la rodadura) ----
+    const alfa = n.cabeceo;
+    const resistencia = 0.000163 * a.kt * a.kt + flaps * 0.0002 * a.kt * a.kt + Math.max(0, alfa) ** 2 * 0.012 + 0.8 + (n.potencia < 0.05 && a.kt < 70 ? 4 : 0);
+    const kt = Math.max(0, a.kt + (empujeDe(efectiva, a.kt, a.ft) - resistencia) * dt);
+    const cl = sustentacion(alfa, flaps) * (1 + EFECTO_SUELO.masSustentacion * EFECTO_SUELO.tabla[0][1]);
+    const sobreW = (kt / VUELO.perdidaKt) ** 2 * cl * ef.sustentacion;
+    n.g = 1; n.perdida = false; n.aviso = false; n.efectoSuelo = 0; n.alfa = alfa; n.ejes = null;
+    let gamma = 0;
     // (en el agua no se despega: el avión flota y se frena)
     if (sobreW > 1.02 && kt > VUELO.rotacionKt - 4 && !a.agua) { n.enSuelo = false; gamma = rad(1); }
+    n.dgamma = grad(gamma - (a.gamma ?? 0)) / dt; n.gamma = gamma; n.kt = kt; n.q = 0;
+    n.vs = kt * KT_FTS * Math.sin(gamma) * 60;
+    const v = kt * KT_FTS * Math.cos(gamma), h = rad(n.rumbo);
+    // En el suelo el viento no arrastra (las ruedas).
+    n.x = a.x + (v * Math.sin(h) * dt) / VUELO.ftPorUnidad;
+    n.z = a.z + (v * Math.cos(h) * dt) / VUELO.ftPorUnidad;
+    n.velSuelo = v / KT_FTS;
+    n.ft = a.ft + (n.enSuelo ? 0 : (n.vs / 60) * dt);
   } else {
-    const dg = (G_KTS / vMin) * (sobreW * Math.cos(rad(n.alabeo)) - Math.cos(a.gamma));
-    gamma = lim(a.gamma + dg * dt * 0.9, rad(limites ? -60 : -88), rad(limites ? 40 : 88)); // (0.14.127: sin límites, hasta casi vertical)
+    // 0.14.127 (el dueño: «la gravedad, que sea más realista»): en el aire, la física de verdad con vectores (sin ángulos que
+    // se traben en la vertical): la dirección de la velocidad (v) y la de la sustentación (l, perpendicular a v). El yugo
+    // pide un ángulo de ataque (como el timón de profundidad de verdad: suelto, vuelve al compensado); la sustentación curva
+    // la trayectoria, la gravedad la tira hacia abajo, el empuje y la resistencia (con la inducida, que crece con los G y a
+    // poca velocidad) cambian la velocidad. Así salen solos el rizo, el vuelo invertido, el arco balístico con 0 G, la
+    // velocidad que se pierde al subir y se gana al bajar y la pérdida con su caída. El cabeceo, el alabeo, el rumbo y la
+    // trayectoria se calculan de los vectores (para la escena, los relojes y los jueces).
+    const E = ejesDe(a);
+    let v = E.v, l = E.l, alfa = E.alfa;
+    const V0 = Math.max(a.kt, 1);
+    // -- alabeo: la tasa (p) va hacia lo que pide el yugo en ~0.35 s; los alerones pueden más con más velocidad --
+    const autoridad = lim(V0 / 100, 0.3, 1.25);
+    let pMeta = pideAlabeo * 48 * autoridad;
+    if (limites && Math.abs(pideAlabeo) < 0.08) pMeta = lim(-a.alabeo * 0.6, -10, 10); // nivela, suave
+    n.p = (a.p ?? 0) + (pMeta - (a.p ?? 0)) * Math.min(1, dt / 0.35) + ef.alabeo * dt; // (0.14.123: un ala dañada tira)
+    // En pérdida (sin límites) un ala cae.
+    if (!limites && alfa > VUELO.alfaPerdida) n.p += (a.alabeo > 2 ? 1 : -1) * ALA_CAE * dt;
+    if (limites && ((a.alabeo >= VUELO.maxAlabeoAsistente && n.p > 0) || (a.alabeo <= -VUELO.maxAlabeoAsistente && n.p < 0))) n.p = 0;
+    l = girar(l, v, -rad(n.p * dt)); // (alrededor de v, hacia la derecha: ángulo negativo con la mano derecha)
+    // -- cabeceo: el ángulo de ataque va hacia lo que pide el yugo (con inercia: más lento a poca velocidad) --
+    n.osc = ef.oscila > 0 ? (a.osc ?? 0) + dt : 0; // (la cola muy dañada: oscila cada vez más)
+    const colaMal = ef.cabeceoExtra + ef.oscila * Math.sin(n.osc * 1.6) * Math.min(14, 3 + n.osc * 0.6);
+    const trim = a.trim ?? alfaNivel(a.kt, flaps);
+    n.trim = trim;
+    let alfaMeta;
+    if (Math.abs(pideCabeceo) < 0.08) {
+      // Suelto: vuelve al ángulo de ataque compensado (la estabilidad).
+      alfaMeta = trim - 0.3 * (a.dgamma ?? 0) * Math.max(0, Math.cos(rad(a.alabeo))); // (un poco de amortiguación del fugoide, de unos 20 s)
+    } else {
+      // (más fino cerca del centro, todo el recorrido a fondo: |yugo|^1.4)
+      const k = Math.sign(pideCabeceo) * Math.abs(pideCabeceo) ** YUGO.curva;
+      alfaMeta = k > 0 ? trim + k * (YUGO.alfaAtras - trim) : trim + k * (trim - YUGO.alfaAdelante);
+      // (con el Asistente, la compensación sigue al yugo de a poco, como un piloto que compensa: solo volando más o menos
+      // derecho, con ~1 G; en un rizo o un viraje cerrado, no: al soltar, el avión vuelve a lo que estaba compensado)
+      if (asistente && Math.abs((a.g ?? 1) - 1) < 0.35) n.trim = lim(trim + lim(alfa - trim, -2, 2) * 0.5 * dt, -2, 12);
+    }
+    alfaMeta += colaMal;
+    if (limites) {
+      // Con los límites: nunca más de 12° de ataque (no hay pérdida) ni de ~3.3 G; la nariz entre −40° y +35°.
+      alfaMeta = Math.min(alfaMeta, Math.min(12, alfaParaCarga(3.3, a.kt, flaps)));
+      if (a.cabeceo > VUELO.maxCabeceoAsistente) alfaMeta = Math.min(alfaMeta, alfa - (a.cabeceo - VUELO.maxCabeceoAsistente) * 3);
+      if (a.cabeceo < -40) alfaMeta = Math.max(alfaMeta, alfa + (-40 - a.cabeceo) * 3);
+    }
+    const tau = lim((0.3 * 90) / Math.max(V0, 30), 0.2, 0.7);
+    alfa += (alfaMeta - alfa) * Math.min(1, dt / tau);
+    // En pérdida, la nariz cae sola (el ala deja de sostener la cola).
+    if (alfa > VUELO.alfaPerdida) alfa -= ((alfa - VUELO.alfaPerdida) * 3 + 4) * dt;
+    if (limites) alfa = Math.min(alfa, Math.max(12, alfaMeta));
+    // -- la turbulencia --
     const rafaga = amb.rafaga ? amb.rafaga(n.t) : null;
-    if (rafaga) { n.alabeo += rafaga.alabeo * dt; n.cabeceo += rafaga.cabeceo * dt; gamma += rad(rafaga.cabeceo * 0.4) * dt; }
-    // (0.14.119: hasta 60° la fórmula del viraje coordinado; más allá, la sustentación inclinada de verdad, también boca abajo)
-    n.rumbo = norm360(a.rumbo + (Math.abs(n.alabeo) <= 60 ? tasaDeGiro(n.alabeo, Math.max(kt, 30)) : tasaConCarga(n.alabeo, kt, Math.max(0.3, Math.abs(sobreW)))) * dt + ef.guinada * dt); // (la cola dañada: la nariz se va de costado)
+    if (rafaga) { l = girar(l, v, -rad(rafaga.alabeo * dt)); alfa += rafaga.cabeceo * dt; v = norm(sumar(v, escalar(l, rad(rafaga.cabeceo * 0.4) * dt))); }
+    // -- las fuerzas (en kt/s; G_KTS es 1 g) --
+    const ge = efectoSuelo(a.ft);
+    n.efectoSuelo = ge;
+    const x = (V0 / VUELO.perdidaKt) ** 2; // la presión dinámica relativa (1 = la de la pérdida)
+    const cl0 = sustentacion(alfa, flaps) * ef.sustentacion, cl = cl0 * (1 + EFECTO_SUELO.masSustentacion * ge);
+    const nL = x * cl, nL0 = x * cl0; // sustentación / peso (el factor de carga); (la de más del efecto suelo no suma inducida)
+    const cdPerdida = alfa > VUELO.alfaPerdida ? Math.min(0.12, (alfa - VUELO.alfaPerdida) * 0.012) : 0;
+    const resistencia = G_KTS * (x * (ARRASTRE.parasito + ARRASTRE.flaps * flaps + cdPerdida) + (ARRASTRE.inducido * nL0 * nL0 * (1 - ge)) / x);
+    let kt = Math.max(0, a.kt + (empujeDe(efectiva, a.kt, a.ft) - resistencia - G_KTS * v[1]) * dt);
+    // La trayectoria: la sustentación la curva hacia l; la gravedad, hacia abajo (lo que no va a lo largo de v).
+    const vMin = Math.max(V0, 8); // (casi sin velocidad la gravedad la da vuelta enseguida: no queda «colgado»)
+    let dv = sumar(escalar(l, (G_KTS * nL) / vMin), escalar(sumar(escalar(v, v[1]), [0, -1, 0]), G_KTS / vMin));
+    // (casi quieto y vertical: la nariz cae hacia un lado, como al final de una subida vertical)
+    if (V0 < 8 && Math.abs(v[1]) > 0.97) dv = sumar(dv, escalar(l, -0.6 * (1 - V0 / 8)));
+    v = norm(sumar(v, escalar(dv, dt)));
+    // (la cola dañada: la nariz y la trayectoria se van de costado)
+    if (ef.guinada) v = girar(v, [0, 1, 0], rad(ef.guinada * dt));
+    l = norm(sumar(l, escalar(v, -punto(l, v))));
+    if (limites) l = bancoMax(v, l, VUELO.maxAlabeoAsistente);
+    // -- los ángulos para la escena y los relojes --
+    const A = angulosDe(v, l, alfa, a.rumbo);
+    n.cabeceo = A.cabeceo; n.alabeo = limites ? lim(A.alabeo, -VUELO.maxAlabeoAsistente, VUELO.maxAlabeoAsistente) : A.alabeo; n.rumbo = A.rumbo;
+    const gamma = Math.asin(lim(v[1], -1, 1));
+    n.q = (n.cabeceo - a.cabeceo) / dt;
+    n.dgamma = grad(gamma - (a.gamma ?? 0)) / dt; n.gamma = gamma; n.kt = kt; n.alfa = alfa;
+    n.g = nL;
+    n.perdida = alfa > VUELO.alfaPerdida;
+    n.aviso = alfa > VUELO.alfaPerdida - 3 || kt < (flaps ? VUELO.perdidaFlapsKt : VUELO.perdidaKt) + 5;
+    n.vs = kt * KT_FTS * v[1] * 60;
+    // 0.14.119: las corrientes de la tormenta (ft/min, arriba +): suben o bajan al avión con todo.
+    if (amb.vertical) n.vs += amb.vertical;
+    // ---- posición (a lo largo de la velocidad, más el viento) ----
+    const w = amb.viento ?? { desde: 0, kt: 0 };
+    const hw = rad(w.desde), vw = (w.kt ?? 0) * KT_FTS; // el viento SOPLA hacia desde + 180
+    const vx = kt * KT_FTS * v[0] - vw * Math.sin(hw), vz = kt * KT_FTS * v[2] - vw * Math.cos(hw);
+    n.x = a.x + (vx * dt) / VUELO.ftPorUnidad;
+    n.z = a.z + (vz * dt) / VUELO.ftPorUnidad;
+    n.velSuelo = Math.hypot(vx, vz) / KT_FTS;
+    // (de costado respecto de la nariz, en kt, + a la derecha: si toca así, el tren se carga de lado)
+    const hn = rad(n.rumbo); n.deriva = (vx * Math.cos(hn) - vz * Math.sin(hn)) / KT_FTS;
+    n.ft = a.ft + (n.vs / 60) * dt;
+    n.ejes = { v, l, alfa, firma: firmaDe(n) };
   }
-  n.dgamma = grad(gamma - a.gamma) / dt; n.gamma = gamma; n.kt = kt;
-  n.vs = kt * KT_FTS * Math.sin(gamma) * 60;
-  // 0.14.119: las corrientes de la tormenta (ft/min, arriba +): suben o bajan al avión con todo.
-  if (!n.enSuelo && amb.vertical) n.vs += amb.vertical;
-  // ---- posición (aire + viento) ----
-  const v = kt * KT_FTS * Math.cos(gamma); // ft/s horizontal
-  const h = rad(n.rumbo);
-  const w = amb.viento ?? { desde: 0, kt: 0 };
-  const hw = rad(w.desde), vw = (w.kt ?? 0) * KT_FTS; // el viento SOPLA hacia desde + 180
-  const vx = v * Math.sin(h) - vw * Math.sin(hw), vz = v * Math.cos(h) - vw * Math.cos(hw);
-  const enRueda = n.enSuelo ? 1 : 0;
-  // En el suelo el viento no arrastra (las ruedas), salvo que vuele.
-  n.x = a.x + ((enRueda ? v * Math.sin(h) : vx) * dt) / VUELO.ftPorUnidad;
-  n.z = a.z + ((enRueda ? v * Math.cos(h) : vz) * dt) / VUELO.ftPorUnidad;
-  n.velSuelo = Math.hypot(enRueda ? v * Math.sin(h) : vx, enRueda ? v * Math.cos(h) : vz) / KT_FTS;
-  n.ft = a.ft + (n.enSuelo ? 0 : (n.vs / 60) * dt);
   // ---- tocar el suelo ----
   if (!n.enSuelo && n.ft <= 0) {
     const pista = pistaDe(n.x, n.z), p = enPista(n.x, n.z, pista);
     // 0.14.113: en el lago, el toque es un amarizaje (agua: true): no rebota y el agua frena muy rápido.
     const agua = enAgua(n.x, n.z);
-    n.toque = { kt: a.kt, vs: a.vs, alabeo: a.alabeo, cabeceo: a.cabeceo, costado: p.costado, largo: p.largo, dentro: p.dentro && !agua, rumbo: n.rumbo, pista: pista.id, ...(agua ? { agua: true } : {}) };
+    n.toque = { kt: a.kt, vs: a.vs, alabeo: a.alabeo, cabeceo: a.cabeceo, costado: p.costado, largo: p.largo, dentro: p.dentro && !agua, rumbo: n.rumbo, pista: pista.id, lateralKt: n.deriva ?? 0, ...(agua ? { agua: true } : {}) };
     n.ft = 0; n.enSuelo = true; n.gamma = 0; n.vs = 0; n.alabeo = 0; n.cabeceo = Math.max(0, Math.min(n.cabeceo, 8)); n.p = 0; n.q = 0; n.agua = agua;
     if (a.vs < -1000 || Math.abs(a.alabeo) > 25 || a.cabeceo < -8) { n.choque = true; n.kt = 0; }
     // Un toque duro rebota: las ruedas devuelven parte del golpe (un salto chico). En el agua, no.

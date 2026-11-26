@@ -35,7 +35,7 @@ test('el efecto suelo: los números de la FAA (envergadura, ¼ y 1/10) y el avi�
 test('la pérdida sin el Asistente: la nariz cae y un ala también; con el Asistente, no', () => {
   const tirar = asistente => {
     let a = crearAvion({ ft: 3500, kt: 80, enSuelo: false, potencia: 0.2 }), max = 0, entro = false;
-    for (let i = 0; i < 20 * 60; i++) { a = pasoVuelo(a, { potencia: 0.2, cabeceo: a.t < 12 ? 0.7 : 0 }, 1 / 60, { asistente }); if (a.perdida) entro = true; max = Math.max(max, Math.abs(a.alabeo)); }
+    for (let i = 0; i < 20 * 60; i++) { a = pasoVuelo(a, { potencia: 0.2, cabeceo: a.t < 12 ? 0.9 : 0 }, 1 / 60, { asistente }); /* (0.14.127: el yugo pide ángulo de ataque: para la pérdida, casi a fondo) */ if (a.perdida) entro = true; max = Math.max(max, Math.abs(a.alabeo)); }
     return { max, entro };
   };
   const sin = tirar(false), con = tirar(true);

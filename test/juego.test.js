@@ -24,16 +24,22 @@ test('modelo: la pérdida es a unos 48 kt (alas niveladas, sin flaps) y a menos 
   cerca((VUELO.perdidaKt / VUELO.perdidaKt) ** 2 * sustentacion(VUELO.alfaPerdida, 0), 1, 1e-9, 'L/W a 48 kt');
   cerca((VUELO.perdidaFlapsKt / VUELO.perdidaKt) ** 2 * sustentacion(VUELO.alfaPerdida, 1), 1, 1e-9, 'L/W a 43 kt con flaps');
   assert.ok(sustentacion(VUELO.alfaPerdida + 6) < sustentacion(VUELO.alfaPerdida), 'pasado el ángulo crítico cae');
-  // Tirando del yugo sin potencia: llega la pérdida (con su aviso antes) y la nariz cae sola.
+  // Tirando del yugo de a poco sin potencia: llega la pérdida (con su aviso antes) y la nariz cae sola.
+  // (0.14.127: el yugo pide un ángulo de ataque, como el de verdad: tirando de a poco, la pérdida llega lenta; de golpe y
+  // rápido, es una pérdida acelerada, con más G y a más velocidad: Vs × √n)
   let a = enCrucero({ potencia: 0 });
   let aviso = false, perdida = false, kMin = 999;
   for (let i = 0; i < 40 * 60; i++) {
-    a = pasoVuelo(a, { cabeceo: 0.7, potencia: 0 }, 1 / 60);
+    a = pasoVuelo(a, { cabeceo: Math.min(1, 0.3 + i / (40 * 60)), potencia: 0 }, 1 / 60);
     if (a.aviso && !perdida) aviso = true;
     if (a.perdida) { perdida = true; kMin = Math.min(kMin, a.kt); }
   }
   assert.ok(aviso && perdida, 'avisa y entra en pérdida');
   assert.ok(kMin < 56, `en pérdida va lento (${kMin.toFixed(1)} kt)`);
+  // De golpe, a fondo, en crucero: la pérdida acelerada (a más velocidad y con más de 2 G).
+  let r = enCrucero({ potencia: 0 }), rompe = null;
+  for (let i = 0; i < 5 * 60 && !rompe; i++) { r = pasoVuelo(r, { cabeceo: 1, potencia: 0 }, 1 / 60); if (r.perdida) rompe = { kt: r.kt, g: r.g }; }
+  assert.ok(rompe && rompe.kt > 60 && rompe.g > 2, `acelerada: ${JSON.stringify(rompe)}`);
   // Con el Asistente, el mismo tirón no llega a la pérdida.
   let b = enCrucero({ potencia: 0 });
   let nunca = true;
