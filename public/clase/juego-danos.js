@@ -20,7 +20,12 @@ export const DANOS = Object.freeze({
 export const AVES = Object.freeze({ bajoFt: 3000, migracion: 'marzo–abril y agosto–noviembre', fuente: 'AIM 7-5-1 · 7-5-2 · 7-5-3' });
 export const PARTES_AVE = Object.freeze(['parabrisas', 'borde', 'motor']);
 
-export const sinDanos = () => ({ tren: 0, trenLado: 0, helice: 0, puntaAla: 0, cola: 0, goma: 0, parabrisas: 0, borde: 0, motorAve: 0 });
+export const sinDanos = () => ({ tren: 0, trenLado: 0, helice: 0, puntaAla: 0, cola: 0, goma: 0, parabrisas: 0, borde: 0, motorAve: 0,
+  // 0.14.127: lo que se gasta de a poco (el exceso de velocidad y de G): los flaps, los mandos y la estructura.
+  flapEstres: 0, flapAtascado: 0, flapAsim: 0, flutter: 0, aleron: 0, elevador: 0, estres: 0, alas: 0 });
+// 0.14.127: los límites de velocidad del anemómetro (PHAK cap. 8, fig. 8-8: el blanco termina en la VFE, el verde en la VNO, la
+// raya roja es la VNE; los números, los del anemómetro de la cabina) y los de G (los de LIMITES en vuelo-modelo.js).
+export const LIMITES_VEL = Object.freeze({ vfeKt: 85, vnoKt: 129, vneKt: 163, gMax: 3.8, gMin: -1.52, seguridad: 1.5, fuente: 'PHAK cap. 8 · cap. 5' });
 // Los que hay (los ids, en orden): para la lista del Menú y el resumen.
 export function listaDanos(d) {
   if (!d) return [];
@@ -33,11 +38,15 @@ export function listaDanos(d) {
   if (d.parabrisas > 0) out.push('parabrisas');
   if (d.borde) out.push('borde');
   if (d.motorAve > 0) out.push('motor_ave');
+  if (d.flapAsim) out.push('flap_asim'); else if (d.flapAtascado) out.push('flap_atascado');
+  if (d.aleron > 0) out.push('aleron');
+  if (d.elevador >= 0.8) out.push('cola_grave'); else if (d.elevador > 0) out.push('elevador');
+  if (d.alas > 0) out.push('alas');
   return out;
 }
 const juntar = (a, b) => {
   const o = { ...sinDanos(), ...(a ?? {}) };
-  for (const [k, v] of Object.entries(b)) o[k] = typeof v === 'number' && (k === 'trenLado' || k === 'puntaAla' || k === 'goma' || k === 'borde') ? (v || o[k]) : Math.max(o[k] ?? 0, v);
+  for (const [k, v] of Object.entries(b)) o[k] = typeof v === 'number' && (k === 'trenLado' || k === 'puntaAla' || k === 'goma' || k === 'borde' || k === 'flapAsim') ? (v || o[k]) : Math.max(o[k] ?? 0, v);
   return o;
 };
 
@@ -49,9 +58,10 @@ export function clasificarImpacto(toque, antes = null) {
   const fatal = fpm > DANOS.fatalFpm || banco > DANOS.alabeoFatalGrados || (nariz < DANOS.narizFatalGrados && fpm > 600);
   const nuevo = {};
   if (fpm > DANOS.trenRotoFpm) { nuevo.tren = 2; nuevo.trenLado = banco > 2 ? lado : 1; } else if (fpm > DANOS.trenDobladoFpm) { nuevo.tren = 1; nuevo.trenLado = banco > 2 ? lado : 1; }
-  if (nariz < DANOS.heliceGrados && fpm > DANOS.heliceFpm) nuevo.helice = fpm > 900 ? 1 : 0.5;
+  // (0.14.127: la hélice golpeada sigue andando, áspera; solo un golpe fuerte de nariz la para)
+  if (nariz < DANOS.heliceGrados && fpm > DANOS.heliceFpm) nuevo.helice = fpm > DANOS.trenRotoFpm ? 1 : 0.5;
   if (banco > DANOS.alabeoPuntaGrados) nuevo.puntaAla = lado;
-  if (nariz > DANOS.colaGrados) nuevo.cola = 1;
+  if (nariz > DANOS.colaGrados) { nuevo.cola = 1; nuevo.elevador = fpm > DANOS.trenDobladoFpm ? 0.5 : 0.25; }
   if ((banco > DANOS.alabeoGomaGrados && banco <= DANOS.alabeoPuntaGrados) || kt > DANOS.gomaKt) nuevo.goma = banco > 2 ? lado : 1;
   if (toque.dentro === false && kt > DANOS.pastoTrenKt) { nuevo.tren = Math.max(nuevo.tren ?? 0, 1); nuevo.trenLado = nuevo.trenLado || 1; }
   const danos = juntar(d0, nuevo);
@@ -69,14 +79,59 @@ export function danoAve(antes, parte, lado = 1) {
 // potencia (factor), rugido (vibración 0..1), alabeo (°/s² que tira hacia un lado en el aire), tiron (°/s del rumbo en el
 // suelo), frenoSuelo (kt/s), inclinacion (° de alabeo quieto en el suelo), motorPara.
 export function efectosDanos(d) {
-  const e = { potencia: 1, rugido: 0, alabeo: 0, tiron: 0, frenoSuelo: 0, inclinacion: 0, motorPara: false };
+  // potencia, rugido, alabeo (°/s² hacia un lado), tiron (°/s en el suelo), frenoSuelo (kt/s), inclinacion (° en el suelo),
+  // motorPara, autAlabeo y autCabeceo (cuánto responden los alerones y el timón de profundidad, 0..1), cabeceoExtra (°/s de
+  // nariz que se va sola), oscila (0..1: la cola muy dañada hace oscilar la nariz cada vez más), guinada (°/s del rumbo en el
+  // aire), flapsFijos (los flaps no se mueven), sustentacion (factor por las alas dobladas).
+  const e = { potencia: 1, rugido: 0, alabeo: 0, tiron: 0, frenoSuelo: 0, inclinacion: 0, motorPara: false, hundido: 0, autAlabeo: 1, autCabeceo: 1, cabeceoExtra: 0, oscila: 0, guinada: 0, flapsFijos: false, sustentacion: 1 };
   if (!d) return e;
-  if (d.helice > 0) { e.potencia *= d.helice >= 1 ? 0 : 0.7; e.rugido = Math.max(e.rugido, d.helice >= 1 ? 0.9 : 0.6); e.motorPara = d.helice >= 1; }
+  if (d.helice > 0) { e.potencia *= d.helice >= 1 ? 0 : 0.7; e.rugido = Math.max(e.rugido, d.helice >= 1 ? 0.9 : 0.65); e.motorPara = d.helice >= 1; }
   if (d.motorAve > 0) { e.potencia *= 0.75; e.rugido = Math.max(e.rugido, 0.5); }
-  if (d.puntaAla) e.alabeo += d.puntaAla * 6;
+  if (d.puntaAla) { e.alabeo += d.puntaAla * 6; e.autAlabeo *= 0.85; }
   if (d.borde) e.alabeo += d.borde * 5;
-  if (d.tren >= 2) { e.tiron += (d.trenLado || 1) * 9; e.frenoSuelo += 7; e.inclinacion = (d.trenLado || 1) * 7; }
-  else if (d.tren >= 1) { e.tiron += (d.trenLado || 1) * 3; e.frenoSuelo += 1.5; e.inclinacion = (d.trenLado || 1) * 2.5; }
+  // (tren roto: los nuevos puntos de apoyo son la panza y la punta del ala de ese lado: el avión baja ~1.8 ft, se inclina
+  // ~12° y se arrastra con mucha fricción; doblado: rueda, inclinado un poco y tirando hacia ese lado)
+  if (d.tren >= 2) { e.tiron += (d.trenLado || 1) * 9; e.frenoSuelo += 7; e.inclinacion = (d.trenLado || 1) * 12; e.hundido = 1.8; }
+  else if (d.tren >= 1) { e.tiron += (d.trenLado || 1) * 3; e.frenoSuelo += 1.5; e.inclinacion = (d.trenLado || 1) * 2.5; e.hundido = 0.4; }
   if (d.goma) { e.tiron += d.goma * 4; e.frenoSuelo += 2.5; }
+  if (d.cola) { e.guinada += 0.6; }
+  if (d.elevador > 0) { e.autCabeceo *= 1 - Math.min(0.85, d.elevador * 0.7); e.cabeceoExtra += -d.elevador * 1.5; if (d.elevador >= 0.8) e.oscila = Math.min(1, d.elevador); }
+  if (d.aleron > 0) { e.autAlabeo *= 1 - Math.min(0.7, d.aleron * 0.6); e.alabeo += d.aleron * 3; }
+  if (d.flapAtascado || d.flapAsim) e.flapsFijos = true;
+  if (d.flapAsim) e.alabeo += d.flapAsim * 7;
+  if (d.alas > 0) { e.sustentacion = 1 - Math.min(0.15, d.alas * 0.08); e.alabeo += d.alas * 1.5; }
   return e;
+}
+
+// 0.14.127: el desgaste de cada momento por pasarse de los límites (en lugar de «se rompió de golpe»). → { danos, nuevos
+// (los ids nuevos de la lista), avisos (los que tocan ahora: 'vfe' | 'vno' | 'vne' | 'g'), fatal }. Con el Asistente, más
+// despacio (avisos y daño solo en los extremos). turb: 0..1 (la turbulencia de ahora).
+export function desgastePaso(d0, { kt = 0, g = 1, flaps = 0, turb = 0, dt = 0, asistente = false, enSuelo = false, lado = 1 } = {}) {
+  const L = LIMITES_VEL, d = { ...sinDanos(), ...(d0 ?? {}) }, avisos = [], k = asistente ? 0.25 : 1;
+  // (nada pasado de los límites: los daños quedan como estaban, el mismo objeto)
+  const pasa = !enSuelo && ((flaps > 0.05 && kt > L.vfeKt) || (kt > L.vnoKt && turb > 0.25) || kt > L.vneKt || g > L.gMax || g < L.gMin);
+  if (!pasa) return { danos: d0, nuevos: [], avisos, fatal: false };
+  const antes = new Set(listaDanos(d0));
+  // Flaps afuera más rápido que la VFE: primero sacuden; después se traban; al final uno se daña (asimétricos).
+  if (flaps > 0.05 && kt > L.vfeKt) {
+    avisos.push('vfe');
+    d.flapEstres += ((kt - L.vfeKt) / 15) * dt * k;
+    if (d.flapEstres > 1) d.flapAtascado = 1;
+    if (d.flapEstres > 2.5 && !d.flapAsim) d.flapAsim = (typeof lado === 'function' ? lado() : lado) || 1;
+  }
+  // En el arco amarillo con turbulencia: la estructura se cansa.
+  if (kt > L.vnoKt && turb > 0.25) { avisos.push('vno'); d.estres += ((kt - L.vnoKt) / 34) * turb * dt * 0.25 * k; }
+  // Pasada la VNE: el aleteo (flutter) daña los alerones, después el timón de profundidad, y sostenido, la rotura.
+  if (kt > L.vneKt) {
+    avisos.push('vne');
+    d.flutter += ((kt - L.vneKt + 5) / 15) * dt * k;
+    if (d.flutter > 1) d.aleron = Math.max(d.aleron, Math.min(1, (d.flutter - 1) * 0.6));
+    if (d.flutter > 2) d.elevador = Math.max(d.elevador, Math.min(1, (d.flutter - 2) * 0.5));
+  }
+  // Más G que el límite: la estructura se dobla de a poco; con 1.5 veces el límite, se rompe.
+  if (g > L.gMax || g < L.gMin) { avisos.push('g'); d.estres += (g > L.gMax ? g - L.gMax : L.gMin - g) * dt * 0.8 * k; }
+  if (d.estres > 1) d.alas = Math.max(d.alas, Math.min(1.5, d.estres - 0.5));
+  const fatal = (!asistente && (g > L.gMax * L.seguridad || g < L.gMin * L.seguridad)) || d.estres > 3 || d.flutter > 5;
+  const nuevos = listaDanos(d).filter(x => !antes.has(x));
+  return { danos: d, nuevos, avisos, fatal };
 }

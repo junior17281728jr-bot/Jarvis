@@ -103,7 +103,8 @@ export function avionPropio(a, { t = 0, yugo = { alabeo: 0, cabeceo: 0 }, luces 
     helice: t * (a.rpm / 60) * Math.PI * 2 * 0.2, luces, t, alerones: yugo.alabeo * 15, profundidad: yugo.cabeceo * 12, sombra: null,
   })];
 }
-export const posicionAvion = a => [a.x, a.ft / VUELO.ftPorUnidad + ALTO_RUEDAS, a.z];
+// (0.14.127: con el tren roto el avión se apoya en la panza y en la punta del ala: hundido, en ft, lo baja hacia el suelo)
+export const posicionAvion = a => [a.x, a.ft / VUELO.ftPorUnidad + ALTO_RUEDAS - (a.enSuelo ? (a.hundido ?? 0) / VUELO.ftPorUnidad : 0), a.z];
 
 // 0.14.105: la luz de aterrizaje (y la de rodaje, más corta): un brillo en la nariz y, cerca del suelo, el suelo iluminado
 // adelante (un abanico claro que no depende del sol: de noche se ve la pista).

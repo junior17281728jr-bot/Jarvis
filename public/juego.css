@@ -699,3 +699,29 @@ body.juego-activo { overflow: hidden; }
 .juego-res-danos { color: #c62f26; font-weight: 700; }
 :root[data-tema="oscuro"] .juego-res-danos { color: #ff8278; }
 .juego-vuelo[data-modo="clase"] .juego-escenario .juego-fila2 .juego-chip { display: none; }
+
+/* ---------- 0.14.127: los avisos chicos en una esquina (daños, pájaros, límites): nunca pausan ni tapan un mando ---------- */
+.juego-tostadas { position: absolute; z-index: 3; left: calc(var(--reserva-izq, 0px) + max(8px, env(safe-area-inset-left))); top: calc(max(8px, env(safe-area-inset-top)) + 122px);
+  display: grid; gap: 4px; width: min(280px, calc(100% - 24px)); pointer-events: none; }
+.juego-tostada { pointer-events: auto; display: flex; align-items: center; gap: 7px; min-height: 36px; margin: 0; padding: 4px 9px; border-radius: 9px; text-align: left; cursor: pointer;
+  background: rgba(14,17,22,0.8); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; border: 1px solid rgba(255,255,255,0.14); border-left: 4px solid #7fb0ff;
+  font: 700 12.5px/1.25 system-ui, -apple-system, sans-serif; box-shadow: 0 3px 10px rgba(0,0,0,0.35); animation: juego-aparece 200ms ease-out both; }
+.juego-tostada[data-tono="mal"] { border-left-color: #e5483e; }
+.juego-tostada-icono { flex: none; font-size: 14px; }
+.juego-tostada-texto { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+@media (orientation: portrait) { .juego-vuelo[data-tactil="1"] .juego-tostadas { top: calc(max(8px, env(safe-area-inset-top)) + 172px); width: min(240px, calc(100% - 180px)); } .juego-vuelo[data-tactil="1"] .juego-agl { left: auto; right: 8px; transform: none; } }
+@media (orientation: landscape) and (max-height: 500px) { .juego-vuelo[data-tactil="1"] .juego-tostadas { top: calc(max(6px, env(safe-area-inset-top)) + 54px); width: 170px; } .juego-vuelo[data-tactil="1"] .juego-agl { left: auto; right: calc(var(--reserva-der, 0px) + 8px); transform: none; } }
+@media (prefers-reduced-motion: reduce) { .juego-tostada { animation: none; } }
+.juego-danos-lista { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.juego-hoja-fuente { list-style: none; margin-left: -18px; color: #9aa6b8; font-size: 12px; }
+.juego-vuelo[data-tactil="1"] .juego-barra .juego-limites2 { display: none; }
+.juego-atajos { flex-wrap: wrap; justify-content: flex-end; max-width: 186px; }
+@media (orientation: portrait) { .juego-vuelo[data-tactil="1"] .juego-tostadas { width: calc(100% - 215px); } .juego-vuelo[data-tactil="1"] .juego-agl { font-size: 12.5px; } }
+/* (de lado no cabe un tercer atajo: «Límites» queda en el Menú) */
+@media (orientation: landscape) and (max-height: 500px) { .juego-vuelo[data-tactil="1"] .juego-atajos .juego-limites { display: none; } }
+.juego-tostadas[hidden] { display: none; }
+.juego-tostadas { transform: translateY(var(--tostadas-baja, 0px)); }
+.juego-escenario:has(.juego-aviso:not([hidden])) .juego-agl { display: none; }
+.juego-res-dano-que { font-size: 0.92em; line-height: 1.35; }
+/* (el teléfono de lado con la tarjeta de abajo abierta: no hay lugar para tres; el tercero espera escondido) */
+@media (orientation: landscape) and (max-height: 500px) { .juego-tostadas[data-bajo] .juego-tostada:nth-child(n+3) { display: none; } }

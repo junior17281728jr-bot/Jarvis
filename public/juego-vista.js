@@ -13,7 +13,7 @@ import { activarToques, bloquearZoom } from './clase/juego-tactil.js';
 import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua, LIMITES } from './clase/vuelo-modelo.js';
 import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz, ESCALA_AVION, ALTO_RUEDAS } from './clase/juego-mundo.js';
 import { sombraAvion, luzDeSombra, alturaSobreSuelo } from './clase/juego-suelo.js';
-import { clasificarImpacto, listaDanos, danoAve, DANOS, AVES, PARTES_AVE } from './clase/juego-danos.js';
+import { clasificarImpacto, listaDanos, danoAve, desgastePaso, DANOS, AVES, PARTES_AVE, LIMITES_VEL } from './clase/juego-danos.js';
 import { montarMinimapa } from './clase/e3d-minimapa.js';
 import { cumulo } from './clase/e3d-base.js';
 import { nubeTormenta } from './clase/e3d-efectos.js';
@@ -266,6 +266,13 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const bTenues = boton('juego-tenues juego-luz', t('juego.mandos_tenues'), () => { mandosTenues = !mandosTenues; pintarBotones(); }, { 'aria-pressed': 'false' });
   const botonesInstr = ['chicos', 'grandes', 'texto'].map(id => boton('juego-instr juego-luz', t(`juego.instrumentos.${id}`), () => { instrumentosAfuera = id; pintarBotones(); }, { 'data-instr': id, 'aria-pressed': 'false' }));
   const bAsistente = boton('juego-asistente juego-luz', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
+  // 0.14.127 (el dueño: «en los giros y sube y baja no puede tenerme limitación… que yo pueda activarlo y apagarlo»): los
+  // límites de maniobra (topes de alabeo, cabeceo y G, y el nivelado suave), aparte del Asistente; apagados al empezar y
+  // recordados en este equipo.
+  const CLAVE_LIMITES = 'academia.juego.limites';
+  const bLimites = boton('juego-limites juego-luz', t('juego.limites.corto'), () => ponerLimites(!limitesOn), { 'aria-pressed': 'false', 'aria-label': t('juego.limites') });
+  const bLimites2 = boton('juego-limites2 juego-luz', t('juego.limites'), () => ponerLimites(!limitesOn), { 'aria-pressed': 'false' });
+  const bLimitesMenu = boton('juego-limites-menu juego-luz', t('juego.limites'), () => ponerLimites(!limitesOn), { 'aria-pressed': 'false' });
   const bFlaps = boton('juego-flaps', t('juego.flaps'), () => ponerFlaps(siguienteFlaps(mandos.flaps)), { 'aria-pressed': 'false' });
   const bPausa = boton('juego-pausa', '', () => pausar(!pausado), { 'aria-pressed': 'false', 'aria-label': t('juego.pausa') });
   const bAyuda = boton('juego-ayuda-boton', '?', () => abrirAyuda(), { 'aria-label': t('juego.ayuda.abrir') });
@@ -287,7 +294,35 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const bOrientacion = boton('juego-orientacion', '', () => { abrirMenu(false); cambiarOrientacion(); });
   const bCerrarMenu = boton('juego-hoja-cerrar', t('juego.menu.cerrar'), () => abrirMenu(false));
   // 0.14.123: los daños del avión (la lista) y los pájaros (apagados al empezar).
-  const danosMenu = el('p', { class: 'juego-hoja-nota juego-danos-lista', 'aria-live': 'polite' });
+  const danosMenu = el('ul', { class: 'juego-hoja-nota juego-danos-lista' });
+  // 0.14.127: los avisos chicos en una esquina (los daños, los pájaros y los límites): se van solos a los 6 s, como mucho 3
+  // a la vez; tocarlos abre la lista de daños del Menú (con la explicación). Nunca pausan ni tapan los mandos.
+  const tostadas = el('div', { class: 'juego-tostadas', role: 'status', 'aria-live': 'polite' });
+  // explicar: { titulo, partes } (lo que se abre al tocarlo: la explicación larga, en la tarjeta de abajo; sin pausar).
+  function tostada(icono, textoT, tono = 'info', explicar = null) {
+    const b = el('button', { type: 'button', class: 'juego-tostada', 'data-tono': tono, onclick: () => { b.remove(); if (explicar) mostrarAviso({ tono, ...explicar }); } },
+      el('span', { class: 'juego-tostada-icono', 'aria-hidden': 'true', texto: icono }), el('span', { class: 'juego-tostada-texto', texto: textoT }));
+    for (const v of [...tostadas.children]) if (v.lastChild?.textContent === textoT) v.remove();
+    tostadas.prepend(b);
+    while (tostadas.children.length > 3) tostadas.lastChild.remove();
+    colocarTostadas();
+    b.dataset.queda = '6000';
+  }
+  // (con la tarjeta de abajo abierta en el mismo lugar, los avisos chicos bajan justo debajo de ella: nunca se tapan)
+  let tostadasBaja = 0;
+  function colocarTostadas() {
+    let baja = 0;
+    if (!aviso.hidden && tostadas.children.length) {
+      const A = aviso.getBoundingClientRect(), T = tostadas.getBoundingClientRect(), arriba = T.top - tostadasBaja;
+      if (A.height && A.left < T.right && T.left < A.right && A.top < arriba + T.height && A.bottom > arriba) baja = Math.ceil(A.bottom - arriba + 6);
+    }
+    if (baja !== tostadasBaja) { tostadasBaja = baja; tostadas.style.setProperty('--tostadas-baja', `${baja}px`); tostadas.toggleAttribute('data-bajo', baja > 0); }
+  }
+  // (el reloj de los avisos chicos: 6 s a la vista)
+  const relojTostadas = setInterval(() => {
+    colocarTostadas();
+    for (const v of [...tostadas.children]) { const q = Number(v.dataset.queda) - 250; if (q <= 0) v.remove(); else v.dataset.queda = String(q); }
+  }, 250);
   const bPajaros = boton('juego-pajaros juego-luz', t('juego.pajaros'), () => { pajarosOn = !pajarosOn; proximaBandada = tiempo + 8; pintarBotones(); }, { 'aria-pressed': 'false' });
   const tituloHoja = k => el('h3', { class: 'juego-menu-titulo', texto: t(k) });
   const menuMas = el('div', { class: 'juego-hoja-capa', hidden: true },
@@ -296,7 +331,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       el('div', { class: 'juego-hoja-cabeza' }, el('h2', { id: 'juego-hoja-titulo', texto: t('juego.mas') }), bCerrarMenu),
       el('div', { class: 'juego-hoja-cuerpo juego-se-desplaza' },
         el('div', { class: 'juego-hoja-fila' }, bAyuda2, tactil ? bOrientacion : null, bTrafico, bPajaros, bSonido, bVuelve),
-        el('div', { class: 'juego-hoja-fila' }, tactil ? bPanelGrande : null, tactil ? bTenues : null, bAgl, b3d),
+        el('div', { class: 'juego-hoja-fila' }, tactil ? bPanelGrande : null, tactil ? bTenues : null, bAgl, b3d, bLimitesMenu),
         tituloHoja('juego.dano.titulo'), danosMenu,
         tituloHoja('juego.instrumentos'), el('div', { class: 'juego-hoja-fila' }, botonesInstr),
         tituloHoja('juego.menu.hora'), el('div', { class: 'juego-hoja-fila' }, botonesHora),
@@ -309,7 +344,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // 0.14.118: «Componentes ⇧»: la pestaña abajo al centro abre el cajón (los interruptores con su luz).
   const bMotor = boton('juego-motor-boton juego-componentes', [icono('motor', 'icono'), el('span', { class: 'juego-motor-boton-texto', texto: t('juego.componentes') }), el('span', { class: 'juego-flecha', 'aria-hidden': 'true', texto: '⇧' })], () => abrirMotor(panelMotor.hidden), { 'aria-expanded': 'false', 'aria-label': t('juego.componentes') });
   const barra = el('div', { class: 'juego-barra' }, el('div', { class: 'juego-barra-izq' }, salir, bVista, bCentrar, marcador),
-    el('div', { class: 'juego-barra-botones' }, bFlaps, bAsistente, bPausa, bMas, bAyuda));
+    el('div', { class: 'juego-barra-botones' }, bFlaps, bAsistente, bLimites2, bPausa, bMas, bAyuda));
   // La oferta («¿la tomas?») y el aviso (la respuesta, la falla, la radio): abajo de la escena, sin tapar la cabina entera.
   const oferta = el('section', { class: 'juego-oferta', hidden: true, role: 'alertdialog', 'aria-labelledby': 'juego-oferta-titulo' });
   const aviso = el('section', { class: 'juego-aviso', hidden: true, role: 'status', 'aria-live': 'polite' });
@@ -334,7 +369,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const fila2 = el('div', { class: 'juego-fila2' }, el('div', { class: 'juego-fila2-izq' }, subtitulo, chip), info);
   // 0.14.122: la altura sobre el suelo (como un radioaltímetro) por debajo de 500 ft: distinta de la altitud del altímetro.
   const agl = el('p', { class: 'juego-agl', hidden: true, 'aria-live': 'off' });
-  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, fila2, hud, agl, oferta, aviso, panelClase, pildoraClase, capaRepe, bMotor);
+  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, fila2, hud, agl, tostadas, oferta, aviso, panelClase, pildoraClase, capaRepe, bMotor);
 
   // Los mandos en pantalla (teléfono y tableta), en dos paneles en los bordes: a la izquierda la palanca de potencia, la de
   // los flaps (UP · 10 · 20 · 30), el freno (mantener) y el freno de mano; a la derecha los atajos y el yugo con la rueda de
@@ -364,7 +399,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
         el('div', { class: 'juego-flaps-caja', role: 'group', 'aria-label': t('juego.flaps.nombre') }, el('span', { class: 'juego-mando-nombre', texto: t('juego.flaps.nombre') }), el('div', { class: 'juego-flaps-riel' }, muescas))),
       el('div', { class: 'juego-frenos' }, bFreno, bFrenoMano)),
     el('div', { class: 'juego-panel juego-panel-der' },
-      el('div', { class: 'juego-atajos', role: 'group', 'aria-label': t('juego.atajos') }, bAsistente2, bMapa),
+      el('div', { class: 'juego-atajos', role: 'group', 'aria-label': t('juego.atajos') }, bAsistente2, bLimites, bMapa),
       el('div', { class: 'juego-yugo-marco' },
         el('div', { class: 'juego-yugo-caja' }, el('span', { class: 'juego-mando-nombre', texto: t('juego.yugo') }), yugo),
         el('div', { class: 'juego-trim-caja', role: 'group', 'aria-label': t('juego.trim') }, el('span', { class: 'juego-mando-nombre', texto: 'TRIM' }), bTrimAbajo,
@@ -382,6 +417,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
         (tactil ? ['yugo', 'tirar', 'potencia_tactil', 'flaps_tactil', 'freno_tactil', 'vista_tactil', 'camara_tactil'] : ['flechas', 'tirar_teclas', 'potencia_teclas', 'flaps_teclas', 'freno_teclas', 'vista_teclas', 'camara_teclas', 'pausa_teclas'])
           .map(k => { const [tecla, que] = t(`juego.ayuda.${k}`).split(' — '); return el('li', {}, el('kbd', { texto: tecla }), el('span', { texto: que ?? '' })); })),
       el('p', { class: 'juego-nota', texto: t('juego.ayuda.asistente') }),
+      el('p', { class: 'juego-nota', texto: t('juego.ayuda.limites') }),
       el('p', { class: 'juego-nota', texto: t('juego.ayuda.aterrizar') }),
       el('button', { type: 'button', class: 'boton-3d naranja grande juego-a-volar', onclick: () => cerrarAyuda() }, el('span', { texto: t('juego.ayuda.listo') }))));
   // El resultado del aterrizaje (y el resumen del vuelo).
@@ -426,6 +462,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const aglVisible = () => (aglModo ?? asistente);
   // 0.14.119: las ráfagas (interruptor aparte), el viento de este momento (con ráfagas), las corrientes de la tormenta y los
   // avisos de los límites (G y VNE) y del motor que tose boca abajo.
+  const avisosLim = {};
+  let limitesOn = false;
+  try { limitesOn = localStorage.getItem('academia.juego.limites') === '1'; } catch { limitesOn = false; }
+  function ponerLimites(si) { limitesOn = Boolean(si); try { localStorage.setItem(CLAVE_LIMITES, limitesOn ? '1' : '0'); } catch { /* sin almacenamiento */ } pintarBotones(); }
+  let juicioPendiente = null; // (0.14.127: el juez del toque que espera a que el avión dañado se detenga)
   let rafagasOn = false, rafagaKt = 0, vientoActual = { desde: 360, kt: 0 }, corriente = 0, avisoG = -99, avisoVne = -99, vneS = 0, avisoTose = -99;
   // (0.14.117: el yugo táctil: donde tocó primero es el centro; cabeceo/alabeo, lo que pide el dedo; suave, lo que llega)
   const toque = { activo: false, cabeceo: 0, alabeo: 0, x0: 0, y0: 0, suave: { cabeceo: 0, alabeo: 0 } };
@@ -778,7 +819,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // (0.14.118: entre ráfaga y ráfaga, la turbulencia de siempre: suave con buen tiempo, más con viento, nubes o tormenta)
     const amb = { viento: vientoActual, vertical: corriente, rafaga: tiempo < rafagaHasta ? rafaga : !mc && turbLeve > 0.005 ? rafagaLeve : null };
     const antes = avion;
-    avion = pasoVuelo(avion, m, dt, { asistente: asistente || Boolean(sostener), ambiente: amb });
+    // (0.14.127: los límites de maniobra van aparte del Asistente: en Vuelo libre, los elige el alumno; en las mini-clases y
+    // con el piloto automático, como antes)
+    avion = pasoVuelo(avion, m, dt, { asistente: asistente || Boolean(sostener), limites: mc || guiado || sostener ? asistente || Boolean(sostener) : limitesOn, ambiente: amb });
     recorridoNm += ((avion.velSuelo ?? 0) * dt) / 3600;
     if (limitesPaso(dt)) return;
     pajarosPaso(dt);
@@ -797,11 +840,14 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // (en el agua, el choque tiene su consejo: el del amarizaje)
     // 0.14.123: cada toque se clasifica: los daños parciales siguen (con sus consecuencias); solo lo imposible de
     // sobrevivir termina el vuelo.
+    let danoAlTocar = false;
     if (avion.toque && !avion.toque.agua) {
       const imp = clasificarImpacto(avion.toque, avion.danos);
       if (avion.choque && !antes.choque && !imp.fatal) avion = { ...avion, choque: false, kt: Math.max(0, avion.toque.kt * 0.5) };
-      if (!avion.choque) { avion = { ...avion, danos: imp.danos }; if (imp.nuevos.length) avisarDanos(imp.nuevos); }
+      if (!avion.choque) { avion = { ...avion, danos: imp.danos }; if (imp.nuevos.length) { avisarDanos(imp.nuevos); danoAlTocar = true; } }
     }
+    // (0.14.127: con un toque que dañó el avión, el resultado espera a que se detenga: se ve cómo se arrastra, sin pausa)
+    if (juicioPendiente && avion.enSuelo && avion.kt < 3) { const jp = juicioPendiente; juicioPendiente = null; terminarVuelo(jp.juicio, jp.datos); return; }
     if (avion.choque && !antes.choque) return terminarVuelo(avion.toque?.agua ? juzgarAmarizaje(avion.toque, { choque: true }) : { nivel: 'choque', motivos: ['choque'], puntos: 0 }, avion.toque ?? null);
     if (avion.toque) sonido.evento('toque');
     if (avion.toque && volo && tiempo - ultimoToque > 3) {
@@ -811,7 +857,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       // Con buen aterrizaje la potencia queda en ralentí (para frenar); el resultado sale al ir despacio.
       mandos.potencia = 0; pintarPotencia();
       const datosToque = avion.toque;
-      setTimeout(() => terminarVuelo(juicio, datosToque), reducir ? 0 : 1400);
+      if (danoAlTocar) juicioPendiente = { juicio, datos: datosToque };
+      else setTimeout(() => terminarVuelo(juicio, datosToque), reducir ? 0 : 1400);
       volo = false;
     }
   }
@@ -848,6 +895,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   }
   const bucle = crearBucle(raiz, dt => {
     dtCuadro = dt;
+    if (tostadas.children.length && (!aviso.hidden || tostadasBaja)) colocarTostadas();
     if (orbitaVuelve && !dedosEscena.size && !orbitaCentrada(orbita) && performance.now() - orbitaTocada > ORBITA.vuelveS * 1000) { orbita = volverOrbita(orbita, dt, { reducir }); if (orbitaCentrada(orbita)) { orbita = orbitaInicial(); pintarBotones(); } }
     // En el vuelo con preguntas el piloto automático va 3 veces más rápido entre preguntas (no en la aproximación).
     const veces = guiado && !enAproximacion && !abierta && !flujo ? GUIADO.velocidadReloj : 1;
@@ -1050,7 +1098,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
         ...(botones ?? []).map(([clave, f]) => el('button', { type: 'button', class: 'boton-3d naranja chico', onclick: f }, el('span', { texto: t(clave) }))),
         el('button', { type: 'button', class: 'juego-boton juego-aviso-cerrar', onclick: () => { aviso.hidden = true; } }, t('juego.aviso.cerrar'))),
     ].filter(Boolean));
-    aviso.hidden = false;
+    aviso.hidden = false; colocarTostadas();
     avisoReloj = botones ? Infinity : corto ? 6 : tono === 'mal' ? 18 : 10;
     aviso.classList.toggle('juego-aviso-corto', corto);
   }
@@ -1096,7 +1144,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     }
     for (const b of bandadas) {
       const dx = b.x - avion.x, dz = b.z - avion.z, dy = b.y - avion.ft / 1000, dist = Math.hypot(dx, dz);
-      if (!b.avisada && dist < 1.6) { b.avisada = true; mostrarAviso({ tono: 'info', titulo: t('juego.pajaros.adelante'), partes: [], corto: true }); }
+      if (!b.avisada && dist < 1.6) { b.avisada = true; tostada('🐦', t('juego.pajaros.adelante'), 'info'); } // (0.14.127: en la esquina)
       if (!b.golpe && dist < 0.045 && Math.abs(dy) < 0.03) {
         b.golpe = true;
         const parte = PARTES_AVE[Math.floor(azar() * 3)], h = (avion.rumbo * Math.PI) / 180, lado = (dx * Math.cos(h) - dz * Math.sin(h)) >= 0 ? 1 : -1;
@@ -1107,18 +1155,23 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   }
   function avisarAve(parte) {
     sonido.evento('toque');
-    mostrarAviso({ tono: 'mal', titulo: t('juego.ave.titulo'), partes: [el('strong', { texto: t(`juego.ave.${parte}`) }), t('juego.ave.que'), t('juego.fuente', { f: AVES.fuente })] });
+    // (0.14.127: en una esquina, sin tapar nada; lo largo, en la lista de daños del Menú)
+    tostada('🐦', t(`juego.ave.${parte}`), 'mal', { titulo: t('juego.ave.titulo'), partes: [el('strong', { texto: t(`juego.ave.${parte}`) }), t('juego.ave.que'), t('juego.fuente', { f: AVES.fuente })] });
     pintarDanos();
   }
   function avisarDanos(ids) {
     sonido.evento('toque');
-    mostrarAviso({ tono: 'mal', titulo: t('juego.dano.titulo'), partes: [el('strong', { texto: ids.map(id => t(`juego.dano.${id}`)).join(' · ') }), ...ids.map(id => t(`juego.dano.${id}.que`)), t('juego.fuente', { f: DANOS.fuente })] });
+    for (const id of ids) tostada('⚠', t(`juego.dano.${id}`), 'mal', { titulo: t(`juego.dano.${id}`), partes: [t(`juego.dano.${id}.que`), t('juego.fuente', { f: `${DANOS.fuente} · ${LIMITES_VEL.fuente}` })] });
     pintarDanos();
   }
   function pintarDanos() {
-    const l = listaDanos(avion.danos);
-    const s1 = l.length ? l.map(id => t(`juego.dano.${id}`)).join(' · ') : t('juego.dano.ninguno');
-    if (danosMenu.textContent !== s1) danosMenu.textContent = s1;
+    const l = listaDanos(avion.danos), clave = l.join('|');
+    // (cada daño con lo que hace un piloto de verdad: aquí, a pedido; nunca en medio del vuelo)
+    if (danosMenu.dataset.clave !== clave) {
+      danosMenu.dataset.clave = clave;
+      danosMenu.replaceChildren(...(l.length ? l.map(id => el('li', {}, el('strong', { texto: t(`juego.dano.${id}`) }), ' ', t(`juego.dano.${id}.que`))) : [el('li', { texto: t('juego.dano.ninguno') })]),
+        ...(l.length ? [el('li', { class: 'juego-hoja-fuente', texto: t('juego.fuente', { f: `${DANOS.fuente} · ${AVES.fuente} · ${LIMITES_VEL.fuente}` }) })] : []));
+    }
     const s2 = l.length ? t('juego.dano.cuantos', { n: l.length }) : '';
     if (infoDanos.textContent !== s2) { infoDanos.textContent = s2; infoDanos.hidden = !s2; }
     raiz.setAttribute('data-parabrisas', avion.danos?.parabrisas ? '1' : '0');
@@ -1535,7 +1588,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     ].filter(Boolean);
     for (const f of filas) resDatos.append(el('li', { texto: f }));
     const ld = listaDanos(avion.danos);
-    if (ld.length) resDatos.append(el('li', { class: 'juego-res-danos', texto: `${t('juego.dano.titulo')}: ${ld.map(id => t(`juego.dano.${id}`)).join(', ')}` }));
+    if (ld.length) resDatos.append(el('li', { class: 'juego-res-danos', texto: `${t('juego.dano.titulo')}: ${ld.map(id => t(`juego.dano.${id}`)).join(', ')}` }),
+      ...ld.map(id => el('li', { class: 'juego-res-dano-que' }, el('strong', { texto: t(`juego.dano.${id}`) }), ' ', t(`juego.dano.${id}.que`)))); // (0.14.127: lo que hace un piloto de verdad)
     resConsejo.textContent = t(`juego.res.consejo.${juicio.motivos[0] ?? 'bueno'}`);
     if (guiado) resTitulo.textContent = t(guiado.fin === 'sin_vidas' ? 'juego.res.base' : 'juego.res.destino');
     errores.hidden = !(puntaje.aceptadas > puntaje.bien || (guiado && guiado.respondidas > guiado.bien));
@@ -1548,7 +1602,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     volo = m === 'final' || m === 'preguntas'; ultimoToque = -10; tiempo = 0; camAfuera = null;
     puntaje = puntajeInicial(); agenda = crearAgenda(azar); ambiente = { viento: { desde: 360, kt: 0 } }; rafagaHasta = -1; fallaDesde = null; decision = null;
     extras = []; nubeFalla = null; desvioHasta = -1; oferta.hidden = true; aviso.hidden = true; pregunta.hidden = true; explicacion.hidden = true; subtitulo.hidden = true; abierta = false;
-    flujo = null; vistaAntes = null; indicado = null; trafico = traficoInicial(); avisados.clear(); terminarRepeticion(); repeDatos = null; sostener = null;
+    flujo = null; vistaAntes = null; indicado = null; juicioPendiente = null; trafico = traficoInicial(); avisados.clear(); terminarRepeticion(); repeDatos = null; sostener = null;
     guiado = m === 'preguntas' ? crearGuiado() : null; objetivo = null; enAproximacion = false; esperando = Boolean(guiado);
     raiz.setAttribute('data-modo', m); modoActual = m; retener = null; tormenta = null;
     resultado.hidden = true; pintarBotones(); pintarPotencia(); pausar(false);
@@ -1564,6 +1618,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     bVista.textContent = `${t(cab ? 'juego.camara.cabina' : 'juego.camara.afuera')} ${cab ? 1 : 2}/2`;
     bVista.setAttribute('aria-label', t('juego.camara.cambiar', { vista: t(cab ? 'juego.camara.cabina' : 'juego.camara.afuera'), n: cab ? 1 : 2 }));
     for (const b of [bAsistente, bAsistente2]) b.setAttribute('aria-pressed', String(asistente));
+    for (const b of [bLimites, bLimites2, bLimitesMenu]) b.setAttribute('aria-pressed', String(limitesOn));
     const g = flapsAGrados(mandos.flaps);
     bFlaps.setAttribute('aria-pressed', String(g > 0)); bFlaps.textContent = g ? t('juego.flaps.grados', { g }) : t('juego.flaps');
     for (const b of muescas) b.setAttribute('aria-pressed', String(Math.abs(Number(b.dataset.f) - mandos.flaps) < 0.01));
@@ -1751,20 +1806,20 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // (+3.8 / −1.52 G: aviso; con 1.5 veces eso se rompe) y la VNE (163 kt: aviso; a 180 o 8 s seguidos, se rompe). Con el
   // Asistente solo avisan (para empezar tranquilo). Boca abajo, el motor tose (el aviso dice por qué).
   function limitesPaso(dt) {
-    if (mc || guiado || avion.enSuelo || avion.choque) { vneS = 0; return false; }
-    const g = avion.g ?? 1, L = LIMITES;
-    const roto = (motivo, datos) => { terminarVuelo({ nivel: 'estructura', motivos: [motivo], puntos: 0 }, datos); volo = false; return true; };
-    if (!asistente && (g > L.gMax * L.seguridad || g < L.gMin * L.seguridad)) return roto('sobrecarga', { kt: avion.kt });
-    if ((g > L.gMax || g < L.gMin) && tiempo - avisoG > 4) {
-      avisoG = tiempo; sonido.evento('pitido');
-      mostrarAviso({ tono: 'mal', titulo: t('juego.limite.g', { g: g.toFixed(1), max: L.gMax, min: L.gMin }), partes: [], corto: true });
+    // 0.14.127: el desgaste de a poco (juego-danos.js: desgastePaso): flaps sobre la VFE, el arco amarillo con turbulencia,
+    // la VNE (aleteo de los mandos) y el exceso de G; avisos en una esquina, daños que se notan en el vuelo, y la rotura solo
+    // si se insiste mucho. Con el Asistente, más despacio. Boca abajo, el motor tose.
+    if (mc || guiado || avion.choque) return false;
+    const w = desgastePaso(avion.danos, { kt: avion.kt, g: avion.g ?? 1, flaps: avion.flapsPos ?? avion.flaps ?? 0, turb: tiempo < rafagaHasta ? 0.8 : turbLeve * 2, dt, asistente, enSuelo: avion.enSuelo, lado: () => (azar() < 0.5 ? -1 : 1) });
+    if (w.danos !== avion.danos) avion = { ...avion, danos: w.danos };
+    for (const a of w.avisos) if (tiempo - (avisosLim[a] ?? -99) > 5) {
+      avisosLim[a] = tiempo; sonido.evento('pitido');
+      const v = { g: (avion.g ?? 1).toFixed(1), max: LIMITES.gMax, min: LIMITES.gMin, vne: LIMITES.vneKt, vfe: LIMITES_VEL.vfeKt, vno: LIMITES_VEL.vnoKt };
+      tostada('⚠', t(`juego.limite.${a}_corto`, v), 'mal', { titulo: t(`juego.limite.${a}`, v), partes: [t('juego.fuente', { f: `${LIMITES.fuente} · ${LIMITES_VEL.fuente}` })] });
     }
-    if (avion.kt > L.vneKt) {
-      vneS += dt;
-      if (!asistente && (avion.kt > L.vneRompeKt || vneS > L.vneSeg)) return roto('vne', { kt: avion.kt });
-      if (tiempo - avisoVne > 4) { avisoVne = tiempo; sonido.evento('pitido'); mostrarAviso({ tono: 'mal', titulo: t('juego.limite.vne', { vne: L.vneKt }), partes: [], corto: true }); }
-    } else vneS = 0;
-    if (avion.tose && tiempo - avisoTose > 12) { avisoTose = tiempo; mostrarAviso({ tono: 'info', titulo: t('juego.limite.tose'), partes: [], corto: true }); }
+    if (w.nuevos.length) avisarDanos(w.nuevos);
+    if (w.fatal) { terminarVuelo({ nivel: 'estructura', motivos: [w.avisos.includes('vne') ? 'vne' : 'sobrecarga'], puntos: 0 }, { kt: avion.kt }); volo = false; return true; }
+    if (avion.tose && tiempo - avisoTose > 12) { avisoTose = tiempo; tostada('⛽', t('juego.limite.tose_corto'), 'info', { titulo: t('juego.limite.tose'), partes: [] }); }
     return false;
   }
   // 0.14.121: el consejo se apaga solo a los 8 s (vuelve con el próximo) en el teléfono de lado (va en la fila de los botones).
@@ -1836,7 +1891,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // ---- salir ----
   function destruir() {
-    bucle.destruir(); gl3?.liberar?.(); temaObs?.disconnect(); clearInterval(relojPotencia); toques.destruir(); sinZoom.destruir();
+    bucle.destruir(); gl3?.liberar?.(); temaObs?.disconnect(); clearInterval(relojPotencia); clearInterval(relojTostadas); toques.destruir(); sinZoom.destruir();
     sonido.destruir(); document.removeEventListener('visibilitychange', alVisibilidad);
     window.removeEventListener('keydown', alApretar); window.removeEventListener('keyup', alSoltar); window.removeEventListener('blur', alPerderFoco);
     window.removeEventListener('hashchange', alCambiarRuta);
@@ -1892,7 +1947,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // Para las capturas y las pruebas: poner el avión en un estado y dibujar ya (también en raiz.juego, para las capturas).
   const control = {
-    raiz, destruir, reiniciar, get orbita() { return orbita; }, ponerCabina3d(si) { cabina3dOn = Boolean(si); pintarBotones(); }, ponerPajaros(si) { pajarosOn = Boolean(si); proximaBandada = tiempo; pintarBotones(); }, get bandadas() { return bandadas; }, ponerRelampago(k) { relampago = k; }, get asistente() { return asistente; }, ponerAsistente(si) { asistente = Boolean(si); pintarBotones(); }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
+    raiz, destruir, reiniciar, get orbita() { return orbita; }, tostar(i, x) { tostada(i, x, 'mal'); }, get limites() { return limitesOn; }, ponerLimites(si) { ponerLimites(si); }, ponerCabina3d(si) { cabina3dOn = Boolean(si); pintarBotones(); }, ponerPajaros(si) { pajarosOn = Boolean(si); proximaBandada = tiempo; pintarBotones(); }, get bandadas() { return bandadas; }, ponerRelampago(k) { relampago = k; }, get asistente() { return asistente; }, ponerAsistente(si) { asistente = Boolean(si); pintarBotones(); }, ponerOrbita(o) { orbita = { ...orbitaInicial(), ...o }; pintarBotones(); }, centrarCamara, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, enFrio, cajon, get runup() { return runup; }, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
     ponerTrafico(tipo) { trafico = [{ ...crearTrafico(tipo, avion), fase: 0.3 }]; return trafico[0]; },
     get guiado() { return guiado; }, get puntaje() { return puntaje; }, get pool() { return pool; }, get flujo() { return flujo; }, get faseClase() { return faseClase; }, responderClase,
     get trafico() { return trafico; }, ponerMandos(m) { Object.assign(mandos, m); pintarPotencia(); }, verMapa(lejos) { mapaLejos = Boolean(lejos); pintarMapas(); dibujarMapa(); },

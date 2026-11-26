@@ -329,7 +329,7 @@ test('0.14.119: el avión como el de verdad: sin topes sin el Asistente, el fact
   assert.ok(gMax < LIMITES.gMax, `Asistente: ${gMax.toFixed(2)} G`);
   assert.ok(alfaParaCarga(3.3, 130) < 12);
   // Sin el Asistente, el mismo tirón pasa el límite.
-  let b = crucero({ kt: 155 }), gB = 0;
+  let b = crucero({ kt: 155, alabeo: 60 }), gB = 0; // (0.14.127: en un viraje cerrado; derecho, la trayectoria sube sin tope y alivia la carga)
   for (let i = 0; i < 4 * 60; i++) { b = pasoVuelo(b, { cabeceo: 1, potencia: 1 }, 1 / 60); gB = Math.max(gB, b.g); }
   assert.ok(gB > LIMITES.gMax, `sin Asistente: ${gB.toFixed(2)} G`);
   // Boca abajo el motor tose (el carburador por gravedad) y empuja poco.
@@ -339,8 +339,7 @@ test('0.14.119: el avión como el de verdad: sin topes sin el Asistente, el fact
   // La pantalla: avisos (G, VNE, tose) y la consecuencia «estructura» (solo sin el Asistente).
   const vista = leer('juego-vista.js');
   assert.match(vista, /function limitesPaso\(dt\)/);
-  assert.match(vista, /if \(!asistente && \(g > L\.gMax \* L\.seguridad \|\| g < L\.gMin \* L\.seguridad\)\) return roto\('sobrecarga'/);
-  assert.match(vista, /if \(!asistente && \(avion\.kt > L\.vneRompeKt \|\| vneS > L\.vneSeg\)\) return roto\('vne'/);
+  assert.match(vista, /const w = desgastePaso\(avion\.danos/);
   const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
   for (const k of ['juego.limite.g', 'juego.limite.vne', 'juego.limite.tose', 'juego.res.estructura', 'juego.res.consejo.sobrecarga', 'juego.res.consejo.vne']) assert.ok(es[k] && en[k], k);
   // Los jueces del aterrizaje, iguales.
@@ -505,4 +504,120 @@ test('0.14.124: la cabina 3D (geometría en la escena, con la luz de afuera) y l
   assert.match(vista, /const usa3d = \(\) => Boolean\(gl3\) && cabina3dOn && !mc\?\.fov && !repe;/);
   assert.match(vista, /let cabina3dOn = false;/, 'en prueba: apagada al empezar');
   assert.doesNotMatch(leer('clase/cabina3d.js'), /cessna|piper|garmin/i);
+});
+
+test('0.14.127: los daños cambian la física (nunca «deja de funcionar»): tren roto rueda, hélice golpeada anda, cola dañada vuela peor, flap asimétrico alabea', async () => {
+  const D = await import('../public/clase/juego-danos.js');
+  const sd = D.sinDanos();
+  // Tren roto: sigue rodando (con mucha fricción e inclinado); el motor sigue andando.
+  let a = { ...crearAvion({}), kt: 30, danos: { ...sd, tren: 2, trenLado: -1 } };
+  for (let i = 0; i < 60; i++) a = pasoVuelo(a, { potencia: 1 }, 1 / 60);
+  assert.ok(a.kt > 0 && a.alabeo < -3 && a.rpm > 1500, `rueda inclinado, con el motor (${a.kt.toFixed(1)} kt, ${a.rpm.toFixed(0)} rpm)`);
+  // (apoyado en la panza y la punta del ala: más bajo que sobre las ruedas, en la escena también)
+  assert.ok(a.hundido > 1, `hundido ${a.hundido}`);
+  const M = await import('../public/clase/juego-mundo.js');
+  assert.ok(M.posicionAvion(a)[1] < M.posicionAvion({ ...a, hundido: 0 })[1]);
+  // Tren doblado: sigue rodando con el motor, tirando hacia un lado.
+  let dob = { ...crearAvion({}), kt: 15, danos: { ...sd, tren: 1, trenLado: 1 } };
+  const r0 = dob.rumbo;
+  for (let i = 0; i < 120; i++) dob = pasoVuelo(dob, { potencia: 0.5 }, 1 / 60);
+  assert.ok(dob.kt > 5 && ((dob.rumbo - r0 + 540) % 360) - 180 > 2, `rueda y tira (${dob.kt.toFixed(1)} kt)`);
+  // Golpe de hélice leve: el motor sigue, áspero y con menos empuje; solo uno fuerte lo para.
+  assert.equal(D.clasificarImpacto({ kt: 60, vs: -500, alabeo: 0, cabeceo: -5, dentro: true }).danos.helice, 0.5);
+  const ef = D.efectosDanos({ ...sd, helice: 0.5 });
+  assert.ok(!ef.motorPara && ef.potencia > 0.5 && ef.potencia < 1 && ef.rugido > 0.5);
+  let h = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.75, enSuelo: false }), danos: { ...sd, helice: 0.5 } };
+  for (let i = 0; i < 120; i++) h = pasoVuelo(h, { potencia: 1 }, 1 / 60);
+  assert.ok(h.rpm > 1500, 'sigue andando');
+  // Cola dañada: sigue volando, pero el yugo responde menos; muy dañada, la nariz oscila cada vez más.
+  const tirar = danos => { let v = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos }; for (let i = 0; i < 60; i++) v = pasoVuelo(v, { cabeceo: 1, potencia: 0.65 }, 1 / 60); return v.cabeceo; };
+  assert.ok(tirar({ ...sd, elevador: 0.5 }) < tirar(null) - 2, 'responde menos');
+  let c = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos: { ...sd, elevador: 1 } }, max = 0;
+  for (let i = 0; i < 20 * 60; i++) { c = pasoVuelo(c, { potencia: 0.65 }, 1 / 60); if (i > 5 * 60) max = Math.max(max, Math.abs(c.cabeceo)); }
+  assert.ok(!c.choque && max > 8, `difícil de controlar (cabeceo hasta ${max.toFixed(0)}°)`);
+  // (la oscilación crece de a poco desde que la cola se daña, no aparece ya entera)
+  let c2 = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), osc: 0 };
+  for (let i = 0; i < 600; i++) c2 = pasoVuelo(c2, { potencia: 0.65 }, 1 / 60);
+  assert.equal(c2.osc, 0, 'sin daño, el reloj no corre');
+  // La cola dañada desvía la nariz también con las alas niveladas.
+  let y1 = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos: { ...sd, cola: 1 } }, y0 = { ...y1, danos: null };
+  for (let i = 0; i < 300; i++) { y1 = pasoVuelo(y1, { potencia: 0.65 }, 1 / 60); y0 = pasoVuelo(y0, { potencia: 0.65 }, 1 / 60); }
+  assert.ok(Math.abs(((y1.rumbo - y0.rumbo + 540) % 360) - 180) > 1.5, 'guiñada con las alas niveladas');
+  // Flap asimétrico: alabea solo; trabados: no se mueven aunque se pidan.
+  let f = { ...crearAvion({ ft: 3000, kt: 80, potencia: 0.6, enSuelo: false, flaps: 0.5 }), flapsPos: 0.5, danos: { ...sd, flapAtascado: 1, flapAsim: 1 } };
+  for (let i = 0; i < 120; i++) f = pasoVuelo(f, { potencia: 0.6, flaps: 0 }, 1 / 60);
+  assert.ok(f.alabeo > 4 && Math.abs(f.flapsPos - 0.5) < 1e-9);
+  // El parabrisas rajado no cambia nada del vuelo.
+  assert.deepEqual(D.efectosDanos({ ...sd, parabrisas: 1 }), D.efectosDanos(sd));
+});
+
+test('0.14.127: pasarse de los límites daña de a poco (flaps sobre la VFE, VNE, G), más despacio con el Asistente', async () => {
+  const D = await import('../public/clase/juego-danos.js');
+  assert.deepEqual([D.LIMITES_VEL.vfeKt, D.LIMITES_VEL.vnoKt, D.LIMITES_VEL.vneKt], [ARCOS_KT.blancoHasta, ARCOS_KT.verdeHasta, ARCOS_KT.vne]);
+  const correr = (op, seg) => { let d = null, todos = new Set(), fatal = false; for (let i = 0; i < seg * 10; i++) { const r = D.desgastePaso(d, { dt: 0.1, ...op }); d = r.danos; r.nuevos.forEach(x => todos.add(x)); r.avisos.forEach(x => todos.add(`aviso:${x}`)); fatal ||= r.fatal; } return { d, todos, fatal }; };
+  // Flaps a 110 kt (VFE 85): primero el aviso, después se traban y al final uno se daña (asimétrico).
+  const f1 = correr({ kt: 110, flaps: 1 }, 0.3), f2 = correr({ kt: 110, flaps: 1 }, 1), f3 = correr({ kt: 110, flaps: 1 }, 3);
+  assert.ok(f1.todos.has('aviso:vfe') && !f1.d.flapAtascado);
+  assert.ok(f2.d.flapAtascado && !f2.d.flapAsim);
+  assert.ok(f3.d.flapAsim);
+  assert.ok(!correr({ kt: 80, flaps: 1 }, 10).todos.has('aviso:vfe'), 'dentro del arco blanco, nada');
+  // Pasada la VNE: aleteo → alerón → timón de profundidad → rotura si se sostiene.
+  const v1 = correr({ kt: 175 }, 1.5), v2 = correr({ kt: 175 }, 4), v3 = correr({ kt: 175 }, 20);
+  assert.ok(v1.d.aleron > 0 && !v1.d.elevador && !v1.fatal);
+  assert.ok(v2.d.elevador > 0 && !v2.fatal);
+  assert.ok(v3.fatal);
+  // Con el Asistente, mucho más despacio.
+  assert.ok(correr({ kt: 175, asistente: true }, 4).d.flutter < v2.d.flutter / 3);
+  // G: sobre el límite, se doblan las alas de a poco; con 1.5 veces, se rompe (sin el Asistente).
+  const g1 = correr({ g: 4.6 }, 2);
+  assert.ok(g1.d.alas > 0 && !g1.fatal && g1.todos.has('alas'));
+  assert.ok(correr({ g: 3.8 * 1.5 + 0.1 }, 0.1).fatal);
+  assert.ok(!correr({ g: 3.8 * 1.5 + 0.1, asistente: true }, 0.1).fatal);
+  // El arco amarillo con turbulencia cansa la estructura; sin turbulencia, no.
+  assert.ok(correr({ kt: 150, turb: 1 }, 10).d.estres > 0 && (correr({ kt: 150, turb: 0 }, 10).d?.estres ?? 0) === 0);
+  // Dentro de los límites, los daños quedan como estaban (el mismo objeto: nada se rehace en cada cuadro).
+  const d0 = D.sinDanos();
+  assert.equal(D.desgastePaso(d0, { kt: 100, dt: 0.1 }).danos, d0);
+  // En el suelo, nada.
+  assert.equal(correr({ kt: 175, enSuelo: true }, 5).d?.flutter ?? 0, 0);
+});
+
+test('0.14.127: los avisos en una esquina (no pausan ni tapan) y los límites de maniobra aparte del Asistente', () => {
+  const vista = leer('juego-vista.js'), css = leer('juego.css');
+  // Los daños y los pájaros van a la esquina (tostada), nunca a la tarjeta grande; la explicación, en el Menú.
+  assert.match(vista, /for \(const id of ids\) tostada\('⚠', t\(`juego\.dano\.\$\{id\}`\), 'mal', \{ titulo: t\(`juego\.dano\.\$\{id\}`\), partes: \[t\(`juego\.dano\.\$\{id\}\.que`\)/);
+  assert.match(vista, /tostada\('🐦', t\(`juego\.ave\.\$\{parte\}`\), 'mal', \{/);
+  // Al tocarlo, su explicación (en la tarjeta de abajo, sin pausar); los otros avisos (tráfico, motor) siguen como antes.
+  assert.match(vista, /onclick: \(\) => \{ b\.remove\(\); if \(explicar\) mostrarAviso\(\{ tono, \.\.\.explicar \}\); \}/);
+  assert.doesNotMatch(vista.slice(vista.indexOf('function mostrarAviso('), vista.indexOf('function mostrarAviso(') + 900), /tostada\(/);
+  for (const k of ['vfe', 'vno', 'vne', 'g']) assert.ok(JSON.parse(leer('i18n/es.json'))[`juego.limite.${k}_corto`].length < 34, k);
+  const fn = vista.slice(vista.indexOf('function tostada('), vista.indexOf('const relojTostadas'));
+  assert.doesNotMatch(fn, /pausar\(/, 'no pausa');
+  assert.match(vista, /while \(tostadas\.children\.length > 3\)/, 'hasta 3');
+  assert.match(vista, /dataset\.queda = '6000'/, '6 s');
+  assert.match(css, /\.juego-tostadas \{ position: absolute; z-index: 3;[^}]*pointer-events: none;/);
+  // Los límites de maniobra: aparte del Asistente, apagados al empezar y recordados.
+  assert.match(vista, /limites: mc \|\| guiado \|\| sostener \? asistente \|\| Boolean\(sostener\) : limitesOn/);
+  assert.match(vista, /let limitesOn = false;/);
+  // El interruptor está siempre en el Menú (un botón propio) y su atajo junto a ASISTENTE y MAPA.
+  assert.match(vista, /bAgl, b3d, bLimitesMenu\)/);
+  assert.match(vista, /bAsistente2, bLimites, bMapa/);
+  // Un toque que daña el avión: el resultado espera a que se detenga (se ve cómo se arrastra; nada se pausa antes).
+  assert.match(vista, /if \(danoAlTocar\) juicioPendiente = \{ juicio, datos: datosToque \};/);
+  assert.match(vista, /if \(juicioPendiente && avion\.enSuelo && avion\.kt < 3\)/);
+  // El resultado trae lo que hace un piloto con cada daño.
+  assert.match(vista, /juego-res-dano-que/);
+  const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
+  for (const k of ['juego.limites', 'juego.limites.corto', 'juego.limite.vfe', 'juego.limite.vno', 'juego.limite.tose_corto', ...['flap_atascado', 'flap_asim', 'aleron', 'elevador', 'cola_grave', 'alas'].flatMap(i => [`juego.dano.${i}`, `juego.dano.${i}.que`])]) assert.ok(es[k] && en[k], k);
+  // En el modelo: sin límites (aunque esté el Asistente) más de 90° de alabeo y más de 60° de cabeceo; con límites, los topes.
+  const cr = () => ({ ...crearAvion({ ft: 5000, kt: 120, potencia: 1, enSuelo: false }) });
+  let a = cr(); for (let i = 0; i < 180; i++) a = pasoVuelo(a, { alabeo: 1, potencia: 1 }, 1 / 60, { asistente: true, limites: false });
+  assert.ok(Math.abs(a.alabeo) > 90, `alabeo ${a.alabeo.toFixed(0)}`);
+  let b = cr(), maxCab = 0; for (let i = 0; i < 360; i++) { b = pasoVuelo(b, { cabeceo: 1, potencia: 1 }, 1 / 60, { asistente: true, limites: false }); maxCab = Math.max(maxCab, b.cabeceo); }
+  assert.ok(maxCab > 60, `cabeceo ${maxCab.toFixed(0)}`);
+  let c = cr(); for (let i = 0; i < 180; i++) c = pasoVuelo(c, { alabeo: 1, potencia: 1 }, 1 / 60, { asistente: false, limites: true });
+  assert.ok(Math.abs(c.alabeo) <= VUELO.maxAlabeoAsistente + 1e-9, 'con límites, aunque no haya Asistente');
+  // La tasa de alabeo a fondo: 30 a 60 °/s.
+  let r = cr(); for (let i = 0; i < 60; i++) r = pasoVuelo(r, { alabeo: 1, potencia: 0.7 }, 1 / 60, { limites: false });
+  assert.ok(r.p >= 30 && r.p <= 60, `p = ${r.p.toFixed(0)} °/s`);
 });
