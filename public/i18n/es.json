@@ -7136,6 +7136,8 @@
   "juego.camara.cambiar": "Cámara: {vista} ({n} de 2). Toca para cambiar.",
   "juego.camara.centrar": "Centrar",
   "juego.camara.vuelve": "La cámara vuelve sola",
+  "juego.agl": "Sobre el suelo: {ft} ft",
+  "juego.agl.boton": "Altura sobre el suelo",
   "juego.panel_grande": "Panel grande",
   "juego.mandos_tenues": "Mandos tenues",
   "juego.instrumentos": "Instrumentos afuera",

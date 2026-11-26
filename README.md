@@ -716,6 +716,20 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.122: la altura a ojo (sombra, suelo con escala, marcas de la pista) — sin cambio de base
+
+- **La sombra del avión** (el dueño: «no puedo saber muy bien si estoy muy pegado del suelo… y la sombra del avión ponle»;
+  `clase/juego-suelo.js`): la silueta de verdad proyectada con el sol, en todas las cámaras; cerca del suelo nítida y oscura,
+  más arriba más grande, clara y borrosa, y desde ~1,300 ft AGL nada; de noche, con nubes o dentro de una, casi nada.
+- **El suelo con escala** (`detalleSuelo`, fijo y con tope): árboles de 25 a 45 ft con su sombra, cercos vivos de ~8 ft,
+  galpones y casas, el alambrado del aeropuerto, un camino con autos y los carteles de la calle de rodaje; la bruma empieza más
+  cerca (el suelo cercano nítido, el lejano apagado).
+- **Las marcas de la pista** (`marcasPista`, AIM 2-3-3): el punto de mira a ~1,000 ft de cada umbral y la zona de toma de
+  contacto (las barras a 500 ft; no las que quedan a menos de 900 ft del medio). El PAPI ya estaba.
+- **«Sobre el suelo: 120 ft»** por debajo de 500 ft (como un radioaltímetro; Menú → «Altura sobre el suelo»: con el Asistente,
+  encendido). El aviso del tráfico, en vidrio oscuro y nunca encima de un mando.
+- Pruebas: `test/juego-cabina.test.js`.
+
 ### Lo nuevo de la 0.14.121: más afuera desde la cabina y el velocímetro de verdad afuera — sin cambio de base
 
 - **La cabina en el teléfono de lado** (el dueño: «mejora esa vista en primera persona, ya que no se ve tanto»): el ojo más

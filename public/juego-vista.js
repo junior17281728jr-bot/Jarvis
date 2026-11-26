@@ -10,7 +10,8 @@ import { PALETAS } from './clase/e3d-base.js';
 import { dibujarCabina, dibujarLadoCabina, dibujarRelojesAfuera, geometriaCabina, FLAPS_GRADOS, flapsAGrados } from './clase/cabina.js';
 import { activarToques, bloquearZoom } from './clase/juego-tactil.js';
 import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua, LIMITES } from './clase/vuelo-modelo.js';
-import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz } from './clase/juego-mundo.js';
+import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz, ESCALA_AVION, ALTO_RUEDAS } from './clase/juego-mundo.js';
+import { sombraAvion, luzDeSombra, alturaSobreSuelo } from './clase/juego-suelo.js';
 import { montarMinimapa } from './clase/e3d-minimapa.js';
 import { cumulo } from './clase/e3d-base.js';
 import { nubeTormenta } from './clase/e3d-efectos.js';
@@ -258,6 +259,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const bCentrar = boton('juego-centrar', t('juego.camara.centrar'), () => centrarCamara());
   const bVuelve = boton('juego-vuelve juego-luz', t('juego.camara.vuelve'), () => { orbitaVuelve = !orbitaVuelve; pintarBotones(); }, { 'aria-pressed': 'false' });
   const bPanelGrande = boton('juego-panel-grande juego-luz', t('juego.panel_grande'), () => { panelGrande = !panelGrande; pintarBotones(); }, { 'aria-pressed': 'false' });
+  const bAgl = boton('juego-agl-boton juego-luz', t('juego.agl.boton'), () => { aglModo = !aglVisible(); pintarBotones(); }, { 'aria-pressed': 'false' });
   const bTenues = boton('juego-tenues juego-luz', t('juego.mandos_tenues'), () => { mandosTenues = !mandosTenues; pintarBotones(); }, { 'aria-pressed': 'false' });
   const botonesInstr = ['chicos', 'grandes', 'texto'].map(id => boton('juego-instr juego-luz', t(`juego.instrumentos.${id}`), () => { instrumentosAfuera = id; pintarBotones(); }, { 'data-instr': id, 'aria-pressed': 'false' }));
   const bAsistente = boton('juego-asistente juego-luz', t('juego.asistente'), () => { asistente = !asistente; pintarBotones(); }, { 'aria-pressed': 'true' });
@@ -288,7 +290,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       el('div', { class: 'juego-hoja-cabeza' }, el('h2', { id: 'juego-hoja-titulo', texto: t('juego.mas') }), bCerrarMenu),
       el('div', { class: 'juego-hoja-cuerpo juego-se-desplaza' },
         el('div', { class: 'juego-hoja-fila' }, bAyuda2, tactil ? bOrientacion : null, bTrafico, bSonido, bVuelve),
-        el('div', { class: 'juego-hoja-fila' }, tactil ? bPanelGrande : null, tactil ? bTenues : null),
+        el('div', { class: 'juego-hoja-fila' }, tactil ? bPanelGrande : null, tactil ? bTenues : null, bAgl),
         tituloHoja('juego.instrumentos'), el('div', { class: 'juego-hoja-fila' }, botonesInstr),
         tituloHoja('juego.menu.hora'), el('div', { class: 'juego-hoja-fila' }, botonesHora),
         tituloHoja('juego.tiempo'), el('div', { class: 'juego-hoja-fila' }, botonesTiempo),
@@ -322,7 +324,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const infoViento = el('p', { class: 'juego-destino juego-info-viento' });
   const info = el('div', { class: 'juego-info', 'aria-hidden': 'true' }, el('div', { class: 'juego-info-fila' }, infoTiempo, infoDist, infoComb), destino, infoViento);
   const fila2 = el('div', { class: 'juego-fila2' }, el('div', { class: 'juego-fila2-izq' }, subtitulo, chip), info);
-  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, fila2, hud, oferta, aviso, panelClase, pildoraClase, capaRepe, bMotor);
+  // 0.14.122: la altura sobre el suelo (como un radioaltímetro) por debajo de 500 ft: distinta de la altitud del altímetro.
+  const agl = el('p', { class: 'juego-agl', hidden: true, 'aria-live': 'off' });
+  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, fila2, hud, agl, oferta, aviso, panelClase, pildoraClase, capaRepe, bMotor);
 
   // Los mandos en pantalla (teléfono y tableta), en dos paneles en los bordes: a la izquierda la palanca de potencia, la de
   // los flaps (UP · 10 · 20 · 30), el freno (mantener) y el freno de mano; a la derecha los atajos y el yugo con la rueda de
@@ -408,7 +412,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   let orbita = orbitaInicial(), orbitaTocada = -1e9, orbitaVuelve = false;
   // 0.14.121: el tablero grande (en el teléfono de lado, si se quiere), los mandos tenues (hasta tocarlos) y cómo se ven los
   // datos del vuelo afuera ('chicos' | 'grandes' | 'texto').
-  let panelGrande = false, mandosTenues = false, instrumentosAfuera = 'chicos';
+  let panelGrande = false, mandosTenues = false, instrumentosAfuera = 'chicos', aglModo = null;
+  const aglVisible = () => (aglModo ?? asistente);
   // 0.14.119: las ráfagas (interruptor aparte), el viento de este momento (con ráfagas), las corrientes de la tormenta y los
   // avisos de los límites (G y VNE) y del motor que tose boca abajo.
   let rafagasOn = false, rafagaKt = 0, vientoActual = { desde: 360, kt: 0 }, corriente = 0, avisoG = -99, avisoVne = -99, vneS = 0, avisoTose = -99;
@@ -417,7 +422,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const apretadas = new Set();
   let vista = 'cabina', asistente = true, pausado = false, tiempo = 0, volo = modo === 'final' || modo === 'preguntas', ultimoToque = -10, camAfuera = null, dtCuadro = 1 / 60;
   let hora = mc?.hora ?? (leerPaleta() === PALETAS.oscuro ? 'atardecer' : 'dia');
-  let paleta = paletaDe(hora), mundo = construirMundo(paleta), mundoLuces = lucesDelMundo(hora), ultimoConsejo = '', ultimoHud = '', relojHud = 0;
+  let paleta = paletaDe(hora), mundo = construirMundo(paleta, { sol: solDe(hora) }), mundoLuces = lucesDelMundo(hora), ultimoConsejo = '', ultimoHud = '', relojHud = 0;
   // Las preguntas y los eventos (0.14.99).
   const azar = azarSembrado(Date.now() % 100000);
   let pool = [], usadas = new Set(), cargando = null, puntaje = puntajeInicial(), agenda = crearAgenda(azar);
@@ -588,13 +593,16 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // 0.14.105: la luz de aterrizaje y la de rodaje (de noche se ve la pista iluminada), también desde la cabina.
     if (!r) { const la = lucesActivas(avion.pist ?? { master: true }); prims.push(...luzAterrizaje(avion, { aterrizaje: la.aterrizaje, rodaje: la.rodaje, suelo: alturaSuelo(avion.x, avion.z) }).filter(q => vista === 'afuera' || q.t !== 's')); }
     if (!r) prims.push(...lucesDinamicas(cam.ojo));
+    // 0.14.122: la sombra del avión, en todas las cámaras (también desde la cabina, cerca del suelo).
+    if (!r) prims.push(...sombraAvion(avion, { suelo: alturaSuelo, sol: solDe(hora), luz: luzDeSombra(hora, cond.gris, cond.dentro), escala: ESCALA_AVION, altoRuedas: ALTO_RUEDAS }));
     // Dentro de la nube (la falla «nube»): todo gris.
     // 0.14.103: dentro de la capa del menú «Tiempo», también (sin horizonte).
     const dentro = r ? Boolean(repe.nube && Math.hypot(avion.x - repe.nube.x, avion.ft / 1000 - repe.nube.y, avion.z - repe.nube.z) < repe.nube.r)
       : (nubeFalla && Math.hypot(avion.x - nubeFalla.x, avion.ft / 1000 - nubeFalla.y, avion.z - nubeFalla.z) < nubeFalla.r) || cond.dentro;
     const p = paletaTiempo();
     const gris = mezclar(p.niebla, tiempoMet === 'tormenta' ? [84, 90, 102] : [150, 156, 166], cond.gris);
-    const niebla = dentro ? { color: [200, 204, 212], inicio: 0, fin: 0.35 } : { color: gris, inicio: Math.min(10, cond.visibilidad * 0.2), fin: Math.min(70, cond.visibilidad) };
+    // (0.14.122: la bruma empieza más cerca y sube despacio: el suelo cercano nítido, el lejano más claro y apagado)
+    const niebla = dentro ? { color: [200, 204, 212], inicio: 0, fin: 0.35 } : { color: gris, inicio: Math.min(6, cond.visibilidad * 0.12), fin: Math.min(62, cond.visibilidad) };
     const sol = solDe(hora);
     if (gl3) gl3.render({ paleta: p, fijas: [mundo, mundoLuces, extras, nubesTiempo], prims, niebla, sol, lejos: 300, texturaEscala: 0.35 }, cam, ancho, alto, { escala: escalaPx });
     else if (ctx2d) render(ctx2d, { paleta: p, prims: [...mundo, ...mundoLuces, ...extras, ...nubesTiempo, ...prims], etiquetas: [], niebla, sol, ambiente: p.ambiente }, cam, ancho, alto, { escala: escalaPx, texturas });
@@ -1055,7 +1063,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     return out;
   }
   function ponerHora(nueva) {
-    hora = nueva; paleta = paletaDe(hora); mundo = construirMundo(paleta, { conNubes: tiempoMet === 'despejado' }); mundoLuces = lucesDelMundo(hora);
+    hora = nueva; paleta = paletaDe(hora); mundo = construirMundo(paleta, { conNubes: tiempoMet === 'despejado', sol: solDe(hora) }); mundoLuces = lucesDelMundo(hora);
     nubesTiempo = nubesConLuz(nubesDe(tiempoMet), paleta);
     raiz.setAttribute('data-hora', hora);
     pintarBotones();
@@ -1361,7 +1369,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // ---- 0.14.103: el tiempo ----
   function ponerTiempo(id, { callado = false } = {}) {
-    tiempoMet = id; nubesTiempo = nubesConLuz(nubesDe(id), paleta); mundo = construirMundo(paleta, { conNubes: id === 'despejado' });
+    tiempoMet = id; nubesTiempo = nubesConLuz(nubesDe(id), paleta); mundo = construirMundo(paleta, { conNubes: id === 'despejado', sol: solDe(hora) });
     zonaAvisada = null; ajusteDicho = null; dentroAvisado = false; oferta.hidden = true;
     cond = condiciones(id, avion.x, avion.z, avion.ft);
     if (id === 'despejado') { if (!vientoManual) ambiente = { ...ambiente, viento: { desde: 360, kt: 0 } }; ajuste = 29.92; }
@@ -1461,6 +1469,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     for (const b of muescas) b.setAttribute('aria-pressed', String(Math.abs(Number(b.dataset.f) - mandos.flaps) < 0.01));
     bFrenoMano.setAttribute('aria-pressed', String(Boolean(mandos.frenoMano)));
     bVuelve.setAttribute('aria-pressed', String(orbitaVuelve));
+    bAgl.setAttribute('aria-pressed', String(aglVisible()));
     bPanelGrande.setAttribute('aria-pressed', String(panelGrande)); bTenues.setAttribute('aria-pressed', String(mandosTenues));
     raiz.setAttribute('data-tenues', mandosTenues ? '1' : '0');
     for (const b of botonesInstr) b.setAttribute('aria-pressed', String(b.dataset.instr === instrumentosAfuera));
@@ -1523,6 +1532,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     infoComb.style.setProperty('--k', k.toFixed(3));
     infoComb.setAttribute('data-bajo', k < 0.2 ? '1' : '0');
     const gs = infoComb.lastChild; if (gs.textContent !== gal) gs.textContent = gal;
+    // La altura sobre el suelo, por debajo de 500 ft (en vuelo).
+    const h = alturaSobreSuelo(avion, alturaSuelo), verAgl = aglVisible() && !avion.enSuelo && h < 500 && !repe;
+    if (agl.hidden === verAgl) agl.hidden = !verAgl;
+    if (verAgl) { const s1 = t('juego.agl', { ft: Math.round(h / 5) * 5 }); if (agl.textContent !== s1) agl.textContent = s1; agl.setAttribute('data-bajo', h < 50 ? '1' : '0'); }
     // (0.14.119: el viento, como en el METAR: «270° 12G20 kt»)
     const w = ambiente.viento ?? { desde: 360, kt: 0 }, vt = w.kt < 1 && rafagaKt < 1 ? t('juego.viento.calma_corta') : t('juego.viento.corto', { v: vientoTexto(w.desde, w.kt, rafagaKt) });
     if (infoViento.textContent !== vt) infoViento.textContent = vt;

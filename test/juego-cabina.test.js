@@ -380,3 +380,44 @@ test('0.14.121: la vista desde la cabina en el teléfono de lado (más afuera) y
   const es = JSON.parse(leer('i18n/es.json')), en = JSON.parse(leer('i18n/en.json'));
   for (const k of ['juego.panel_grande', 'juego.mandos_tenues', 'juego.instrumentos', 'juego.instrumentos.chicos', 'juego.instrumentos.grandes', 'juego.instrumentos.texto']) assert.ok(es[k] && en[k], k);
 });
+
+test('0.14.122: la sombra del avión (con el sol, según la altura), las marcas de la pista y el detalle del suelo', async () => {
+  const { sombraAvion, luzDeSombra, alturaSobreSuelo, marcasPista, MARCAS_PISTA, detalleSuelo, DETALLE, SOMBRA } = await import('../public/clase/juego-suelo.js');
+  const { PISTA, PISTA_B } = await import('../public/clase/vuelo-modelo.js');
+  const av = ft => ({ x: 0.5, z: -6, ft, rumbo: 360, cabeceo: 0, alabeo: 0 });
+  const alfa = ps => Math.max(...ps.map(q => q.a));
+  const area = ps => { const q = ps[0].p; let s = 0; for (let i = 0; i < q.length; i++) { const a = q[i], b = q[(i + 1) % q.length]; s += a[0] * b[2] - b[0] * a[2]; } return Math.abs(s) / 2; };
+  const s50 = sombraAvion(av(50)), s600 = sombraAvion(av(600));
+  assert.ok(s50.length >= 8, 'la silueta (ala, nariz, cola, estabilizador), en dos capas');
+  assert.ok(alfa(s50) > alfa(s600) && alfa(s600) > 0, 'más alto, más clara');
+  assert.ok(area(s600) > area(s50), 'más alto, más grande');
+  assert.equal(sombraAvion(av(SOMBRA.hastaFt + 50)).length, 0, 'desde ~1,300 ft, nada');
+  assert.ok(s50.every(q => q.capa === 'calco' && q.p.every(p => Math.abs(p[1] - 0.0011) < 1e-9)), 'en el suelo');
+  // Con el sol del oeste-sur (el de la tarde), la sombra cae al este-norte del avión.
+  const cx = s600[0].p.reduce((s, p) => s + p[0], 0) / s600[0].p.length;
+  assert.ok(cx > 0.5, 'proyectada lejos del sol');
+  // De noche casi nada; dentro de una nube, nada.
+  assert.ok(luzDeSombra('noche') < 0.1 && luzDeSombra('dia') === 1 && luzDeSombra('dia', 0, true) === 0 && luzDeSombra('dia', 1) < 0.2);
+  assert.ok(alfa(sombraAvion(av(50), { luz: luzDeSombra('noche') })) < 0.04);
+  assert.equal(alturaSobreSuelo({ x: 0, z: 0, ft: 120 }), 120);
+  // Las marcas: el punto de mira a ~1,000 ft del umbral (AIM 2-3-3), en las dos cabeceras de cada pista.
+  assert.equal(MARCAS_PISTA.fuente, 'AIM 2-3-3'); assert.equal(MARCAS_PISTA.miraFt, 1000);
+  const m = marcasPista(PISTA);
+  const zs = m.map(q => q.p.reduce((s, p) => s + p[2], 0) / 4 * 1000);
+  assert.ok(zs.some(z => Math.abs(z - (-PISTA.largoFt / 2 + 1075)) < 5) && zs.some(z => Math.abs(z - (PISTA.largoFt / 2 - 1075)) < 5), 'el punto de mira, a 1,000–1,150 ft de cada umbral');
+  assert.ok(m.length >= 4 + 12, 'mira y zona de toma de contacto');
+  assert.ok(marcasPista(PISTA_B).length >= 4);
+  // El detalle: con tope (iPhone) y nada alto cerca de la pista ni en la final.
+  const d = detalleSuelo({});
+  const copas = d.filter(q => q.t === 's' && q.r > 0.006);
+  assert.ok(copas.length > 50 && copas.length <= DETALLE.arboles, `árboles: ${copas.length}`);
+  for (const q of copas) assert.ok(!(Math.abs(q.p[0] - PISTA.x) < 0.3 && q.p[2] > -8 && q.p[2] < 2.6), 'ni en la pista ni en la final');
+  assert.ok(copas.every(q => q.p[1] + q.r >= 0.024 && q.p[1] + q.r <= 0.047), 'árboles de 25 a 45 ft');
+  assert.ok(d.length < 2500, `lista fija chica (${d.length})`);
+  assert.equal(detalleSuelo({ noche: true }).filter(q => q.capa === 'calco' && q.a === 0.26).length, 0, 'de noche, sin sombras de árboles');
+  // La altura sobre el suelo en la pantalla y el aviso del tráfico que nunca tapa un mando.
+  const vista = leer('juego-vista.js'), css = leer('juego.css');
+  assert.match(vista, /verAgl = aglVisible\(\) && !avion\.enSuelo && h < 500/);
+  assert.match(css, /\.juego-escenario \.juego-aviso \{ top: calc\(max\(6px, env\(safe-area-inset-top\)\) \+ 54px\); left: calc\(var\(--reserva-izq, 0px\) \+ 8px\); right: calc\(var\(--reserva-der, 0px\) \+ 8px\);/);
+  assert.match(css, /\.juego-aviso\.juego-aviso-corto \{ background: rgba\(14,17,22,0\.84\)/);
+});

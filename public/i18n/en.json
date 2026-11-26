@@ -7136,6 +7136,8 @@
   "juego.camara.cambiar": "Camera: {vista} ({n} of 2). Tap to switch.",
   "juego.camara.centrar": "Center",
   "juego.camara.vuelve": "Camera returns by itself",
+  "juego.agl": "Above ground: {ft} ft",
+  "juego.agl.boton": "Height above ground",
   "juego.panel_grande": "Large panel",
   "juego.mandos_tenues": "Faded controls",
   "juego.instrumentos": "Outside instruments",

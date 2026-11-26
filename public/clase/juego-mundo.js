@@ -4,6 +4,7 @@
 import { aeropuerto, campo, cumulo } from './e3d-base.js';
 import { ruido, aleatorio, primitivasAvion, poligono, mezclarColor } from './motor3d.js';
 import { PISTA, PISTA_B, VUELO, LAGO, enAgua, radioLago } from './vuelo-modelo.js';
+import { marcasPista, detalleSuelo } from './juego-suelo.js';
 
 // 0.14.113: el lago (para el amarizaje): plano (altura 0) y con la orilla que sube despacio.
 export { LAGO, enAgua };
@@ -65,7 +66,7 @@ export function nubesConLuz(prims, paleta) {
   return prims.map(q => (q.tex === 'nube' ? { ...q, c: q.c.map((v, i) => Math.round(v * k[i])) } : q));
 }
 
-export function construirMundo(paleta, { conNubes = true } = {}) {
+export function construirMundo(paleta, { conNubes = true, sol = undefined } = {}) {
   const prims = [];
   // (0.14.117: el terreno debajo del lago, de pasto: sus cuadros miden 4,000 ft y, pintados de agua, se salían de la orilla
   // como un halo celeste alrededor del lago; el agua la pone aguaLago, justo hasta la orilla)
@@ -74,6 +75,9 @@ export function construirMundo(paleta, { conNubes = true } = {}) {
   prims.push(...aeropuerto({ x: PISTA.x, z: PISTA.z, y: 0.0004, rumbo: PISTA.rumbo % 360, largo: PISTA.largoFt / VUELO.ftPorUnidad, ancho: PISTA.anchoFt / VUELO.ftPorUnidad, paleta, torre: true, detalle: true }));
   // 0.14.102: el aeropuerto B (pista 09), a unos 10 NM al noreste.
   prims.push(...aeropuerto({ x: PISTA_B.x, z: PISTA_B.z, y: 0.0004, rumbo: PISTA_B.rumbo % 360, largo: PISTA_B.largoFt / VUELO.ftPorUnidad, ancho: PISTA_B.anchoFt / VUELO.ftPorUnidad, paleta, torre: false, detalle: true }));
+  // 0.14.122: las marcas que dan la altura (punto de mira y zona de toma de contacto) y el detalle del suelo (árboles, cercos,
+  // galpones, alambrado, camino con autos, carteles): la escala, cerca del suelo.
+  prims.push(...marcasPista(PISTA), ...marcasPista(PISTA_B), ...detalleSuelo({ sol, noche: Boolean(paleta?.noche), paleta }));
   // Cúmulos de buen tiempo (base a 4,500 ft), lejos de la pista (solo con tiempo despejado: el «Tiempo» trae los suyos).
   const azar = aleatorio(11);
   for (let i = 0; i < (conNubes ? 9 : 0); i++) {
@@ -87,7 +91,8 @@ export function construirMundo(paleta, { conNubes = true } = {}) {
 export function avionPropio(a, { t = 0, yugo = { alabeo: 0, cabeceo: 0 }, luces = true } = {}) {
   return primitivasAvion({
     pos: posicionAvion(a), rumbo: a.rumbo, cabeceo: a.cabeceo, alabeo: a.alabeo, escala: ESCALA_AVION,
-    helice: t * (a.rpm / 60) * Math.PI * 2 * 0.2, luces, t, alerones: yugo.alabeo * 15, profundidad: yugo.cabeceo * 12, sombra: 0.0006,
+    // (0.14.122: la sombra va aparte, proyectada con el sol y según la altura: juego-suelo.js)
+    helice: t * (a.rpm / 60) * Math.PI * 2 * 0.2, luces, t, alerones: yugo.alabeo * 15, profundidad: yugo.cabeceo * 12, sombra: null,
   });
 }
 export const posicionAvion = a => [a.x, a.ft / VUELO.ftPorUnidad + ALTO_RUEDAS, a.z];
