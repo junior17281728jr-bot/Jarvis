@@ -1,7 +1,7 @@
 // 0.14.100: la noche en el Juego: las luces del aeropuerto (bordes de pista, umbral y final, calles de rodaje, el faro y
 // el PAPI/VASI), los otros aviones con sus luces de posición y el derecho de paso, y el cielo de día, al atardecer y de
 // noche. Sin documento ni ventana (las pruebas lo usan tal cual). Los datos, de los textos de la FAA (tabla LUCES_FAA).
-import { bola, primitivasAvion } from './motor3d.js';
+import { bola, primitivasAvion, modeloAvion } from './motor3d.js';
 import { PALETAS } from './e3d-base.js';
 import { PISTA, VUELO, enPista, enAgua } from './vuelo-modelo.js';
 
@@ -201,15 +201,18 @@ export function primitivasTrafico(tr, ojo, { hora = 'dia', t = 0, escala = 0.003
   const out = hora === 'noche' ? [] : primitivasAvion({ pos, rumbo: tr.rumbo, escala, luces: false, helice: t * 40 }).filter(p => p.t !== 's' || p.tex === 'disco');
   const v = lucesVisibles(tr, ojo);
   const h = rad(tr.rumbo), F = [Math.sin(h), Math.cos(h)], R = [Math.cos(h), -Math.sin(h)];
-  const L = (adelante, derecha, arriba) => [pos[0] + (F[0] * adelante + R[0] * derecha) * escala, pos[1] + arriba * escala, pos[2] + (F[1] * adelante + R[1] * derecha) * escala];
-  const luz = (p, c, min, a = 1) => out.push(bola(p, 0.45 * escala, c, { tex: 'brillo', min, a }));
+  // (0.14.117: en el mismo sitio que las del avión dibujado: las puntas del ala, la cola y la deriva de modeloAvion(),
+  // que está en [adelante, arriba, derecha]; antes eran las del avión viejo, más chico, y quedaban unos 2 ft abajo)
+  const L = q => [pos[0] + (F[0] * q[0] + R[0] * q[2]) * escala, pos[1] + q[1] * escala, pos[2] + (F[1] * q[0] + R[1] * q[2]) * escala];
+  const ml = modeloAvion().luces;
+  const luz = (p, c, min, a = 1) => out.push(bola(p, 0.45 * escala, c, { tex: 'brillo', min, a, luzTrafico: true }));
   const brillo = hora === 'dia' ? 0.6 : 1;
-  if (v.rojo) luz(L(1.4, -5.55, 0.86), COLORES.rojo, 2.6, brillo);
-  if (v.verde) luz(L(1.4, 5.55, 0.86), COLORES.verde, 2.6, brillo);
-  if (v.blanco) luz(L(-4.45, 0, 1.0), COLORES.blanco, 2.4, brillo);
-  // Anticolisión: el faro rojo (arriba) y los destellos blancos en las puntas.
-  if ((t + (tr.fase ?? 0)) % 1 < 0.12) luz(L(-4.2, 0, 1.8), [255, 60, 40], 1.6, 1);
-  if ((t + (tr.fase ?? 0)) % 1.3 < 0.07) { luz(L(1.4, -5.55, 0.86), COLORES.blanco, 2.2, 1); luz(L(1.4, 5.55, 0.86), COLORES.blanco, 2.2, 1); }
+  if (v.rojo) luz(L(ml.izquierda), COLORES.rojo, 2.6, brillo);
+  if (v.verde) luz(L(ml.derecha), COLORES.verde, 2.6, brillo);
+  if (v.blanco) luz(L(ml.cola), COLORES.blanco, 2.4, brillo);
+  // Anticolisión: el faro rojo (arriba de la deriva) y los destellos blancos en las puntas.
+  if ((t + (tr.fase ?? 0)) % 1 < 0.12) luz(L(ml.baliza), [255, 60, 40], 1.6, 1);
+  if ((t + (tr.fase ?? 0)) % 1.3 < 0.07) { luz(L(ml.izquierda), COLORES.blanco, 2.2, 1); luz(L(ml.derecha), COLORES.blanco, 2.2, 1); }
   return out;
 }
 export const colorLuz = c => COLORES[c] ?? COLORES.blanco;

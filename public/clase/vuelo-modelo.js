@@ -54,6 +54,26 @@ export function enPista(x, z, pista = PISTA) {
   return { largo, costado, dentro: Math.abs(largo) <= pista.largoFt / 2 && Math.abs(costado) <= pista.anchoFt / 2 };
 }
 
+// 0.14.117: el efecto suelo (PHAK cap. 5; AFH cap. 6: se nota hasta una envergadura sobre el suelo). Con el ala a la
+// altura de su envergadura, la resistencia inducida baja apenas 1.4 %; a un cuarto, 23.5 %; a un décimo, 47.6 %. Por eso
+// el avión «flota» en el redondeo y, en el despegue, puede dejar el suelo antes de tener la velocidad para subir.
+// Con el mismo ángulo de ataque, algo más de sustentación (aquí, hasta un 15 % pegado al suelo).
+export const EFECTO_SUELO = Object.freeze({ envergaduraFt: 36, alaFt: 7.5, tabla: Object.freeze([[0, 0.6], [0.1, 0.476], [0.25, 0.235], [1, 0.014]]), masSustentacion: 0.25, fuente: 'PHAK cap. 5 · AFH cap. 6' });
+// Cuánto baja la resistencia inducida (0..0.6) a «ft» de altura (las ruedas).
+export function efectoSuelo(ft) {
+  const r = (Math.max(0, ft) + EFECTO_SUELO.alaFt) / EFECTO_SUELO.envergaduraFt, t = EFECTO_SUELO.tabla;
+  if (r >= 1) return Math.max(0, t[3][1] * (1.5 - r) * 2); // (se apaga del todo a 1.5 envergaduras)
+  for (let i = 0; i < t.length - 1; i++) if (r <= t[i + 1][0]) { const k = (r - t[i][0]) / (t[i + 1][0] - t[i][0]); return t[i][1] + (t[i + 1][1] - t[i][1]) * k; }
+  return 0;
+}
+// 0.14.117: la pérdida sin el Asistente: un ala cae (aquí la izquierda, salvo que ya esté inclinado a la derecha; el AFH
+// describe el ala que «rueda» en la pérdida) y hay que nivelar con el yugo después de bajar la nariz (AFH cap. 5).
+// Grados/s² de alabeo que agrega.
+export const ALA_CAE = 30;
+// 0.14.117: el viento cruzado en el suelo: el avión tiende a poner la nariz hacia el viento («weathervane», AFH, glosario)
+// y hay que corregir con los pedales (aquí, el yugo de costado). Grados/s por nudo de viento cruzado.
+export const VELETA = 0.12;
+
 // Coeficiente de sustentación relativo (1 = el máximo) para un ángulo de ataque; pasada la pérdida, cae.
 export function sustentacion(alfa, flaps = 0) {
   const a0 = 2 + flaps * 3; // con flaps hay sustentación con menos ángulo
@@ -125,7 +145,9 @@ function subpaso(a, m, dt, amb, asistente) {
   if (n.enSuelo) {
     // En el suelo: el alabeo es la dirección (pedales y rueda de nariz); la nariz se levanta con velocidad.
     n.alabeo = hacia(a.alabeo, 0, 30 * dt);
-    n.rumbo = norm360(a.rumbo + pideAlabeo * 14 * lim(a.kt / 20, 0, 1) * dt);
+    // (el viento cruzado gira la nariz hacia el viento, más cuanto más rápido rueda, hasta unos 15 kt; en el agua también)
+    const w0 = amb.viento ?? { desde: 0, kt: 0 }, cruzado = (w0.kt ?? 0) * Math.sin(rad((w0.desde ?? 0) - a.rumbo));
+    n.rumbo = norm360(a.rumbo + pideAlabeo * 14 * lim(a.kt / 20, 0, 1) * dt + VELETA * cruzado * lim(a.kt / 15, 0, 1) * dt);
     const puede = a.kt >= VUELO.rotacionKt - 8 ? 12 : 0;
     n.cabeceo = lim(a.cabeceo + (pideCabeceo > 0.1 ? 8 : -6) * dt, 0, puede);
     alfa = n.cabeceo;
@@ -154,19 +176,24 @@ function subpaso(a, m, dt, amb, asistente) {
     const alfaN = cab - grad(a.gamma);
     // El Asistente es una ayuda suave: nunca deja pasar de 12° de ataque (no hay pérdida); no fija la altura ni la subida.
     if (asistente && alfaN > 12) { cab = 12 + grad(a.gamma); n.q = Math.min(n.q ?? 0, 0); }
-    // En pérdida, la nariz cae sola.
-    if (alfaN > VUELO.alfaPerdida) cab -= ((alfaN - VUELO.alfaPerdida) * 6 + 12) * dt;
+    // En pérdida, la nariz cae sola (y sin el Asistente, también un ala).
+    if (alfaN > VUELO.alfaPerdida) {
+      cab -= ((alfaN - VUELO.alfaPerdida) * 6 + 12) * dt;
+      if (!asistente) n.p += (a.alabeo > 2 ? 1 : -1) * ALA_CAE * dt;
+    }
     n.cabeceo = lim(cab, -40, 35);
     alfa = n.cabeceo - grad(a.gamma);
   }
   // ---- velocidad ----
   const empuje = 4.5 * efectiva * (1 - a.kt / 230) * TECHO.factor(a.ft);
-  const resistencia = 0.000163 * a.kt * a.kt + flaps * 0.0002 * a.kt * a.kt + Math.max(0, alfa) ** 2 * 0.012 + (n.enSuelo ? 0.8 + (n.potencia < 0.05 && a.kt < 70 ? 4 : 0) : 0);
+  const ge = a.agua ? 0 : efectoSuelo(a.ft);
+  n.efectoSuelo = n.enSuelo ? 0 : ge;
+  const resistencia = 0.000163 * a.kt * a.kt + flaps * 0.0002 * a.kt * a.kt + Math.max(0, alfa) ** 2 * 0.012 * (1 - ge) + (n.enSuelo ? 0.8 + (n.potencia < 0.05 && a.kt < 70 ? 4 : 0) : 0);
   let kt = a.kt + (empuje - resistencia - G_KTS * Math.sin(a.gamma)) * dt;
   kt = Math.max(0, kt);
   // ---- trayectoria (gamma: el ángulo de la trayectoria) ----
   const vMin = Math.max(kt, 20);
-  const cl = sustentacion(alfa, flaps);
+  const cl = sustentacion(alfa, flaps) * (1 + EFECTO_SUELO.masSustentacion * ge);
   const sobreW = (kt / VUELO.perdidaKt) ** 2 * cl; // sustentación / peso
   // El factor de carga (g): la sustentación sobre el peso (en tierra, 1).
   n.g = n.enSuelo ? 1 : sobreW;
@@ -233,6 +260,11 @@ export function consejo(a, { vuelo = false } = {}) {
     return a.kt < VUELO.rotacionKt ? 'acelera' : 'rotar';
   }
   if (a.ft < 500 && a.vs > 0) return 'subir';
+  // 0.14.117: a menos de una envergadura sobre la pista (o su final corta), bajando: el redondeo (el efecto suelo lo hace flotar).
+  if (a.ft < EFECTO_SUELO.envergaduraFt && !enAgua(a.x, a.z)) for (const pista of PISTAS) {
+    const p = enPista(a.x, a.z, pista);
+    if (p.largo > -pista.largoFt / 2 - 1500 && p.largo < pista.largoFt / 2 && Math.abs(p.costado) < 400) return 'redondeo';
+  }
   // En final de cualquiera de las pistas: alineado (± 30°), antes del umbral y bajo.
   for (const pista of PISTAS) {
     const p = enPista(a.x, a.z, pista);

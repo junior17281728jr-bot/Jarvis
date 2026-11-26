@@ -716,6 +716,28 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.117: el Juego de vuelo, más real (avión, mandos, cámara y preguntas) — sin cambio de base
+
+- **El vuelo** (`vuelo-modelo.js`): el efecto suelo (`EFECTO_SUELO`, `efectoSuelo(ft)`; PHAK cap. 5: la resistencia
+  inducida baja 1.4 % con el ala a una envergadura, 23.5 % a un cuarto y 47.6 % a un décimo; AFH cap. 6: hasta una
+  envergadura) hace flotar al avión en el redondeo; sin el Asistente, en la pérdida además cae un ala (`ALA_CAE`; AFH:
+  bajar la nariz y después nivelar); en el suelo el viento cruzado gira la nariz hacia el viento (`VELETA`; AFH,
+  «weathervane») y se corrige con el yugo de costado; el consejo «redondeo» a menos de una envergadura sobre la pista.
+- **Los mandos**: en el teléfono el centro del yugo es donde toca el dedo (tocar fuera del centro ya no tuerce el avión de
+  golpe), con zona muerta, curva fina cerca del centro y suavizado (`curvaYugo`, `suavizarYugo`); entre los mandos la
+  página no se mueve (salvo la lista de la prueba de motor, que se desplaza); los consejos del teléfono hablan del yugo,
+  no de flechas (`juego.consejo.*_tactil`).
+- **La cámara**: la de afuera sigue al avión por segundos (no por cuadro), se inclina un tercio del alabeo y sube o baja con
+  la trayectoria (`seguirCamara`); en la cabina el horizonte queda a 3/5 del parabrisas y se ve el suelo delante
+  (`miradaCabina`).
+- **El mundo**: las luces de los otros aviones en las puntas del ala, la cola y la deriva del avión nuevo
+  (`modeloAvion().luces`; antes quedaban unos 2 ft abajo); el lago ya no tiene el halo celeste alrededor: el terreno de abajo
+  no se pinta de agua (sus cuadros de 4,000 ft se salían de la orilla), el agua refleja el cielo como la de las escenas
+  y una orilla suave de árboles; las nubes con la luz de la hora (de noche ya no son blancas).
+- **Las preguntas**: las tarjetas entran suaves, las opciones una tras otra y la correcta brilla en la explicación (nada
+  con «menos movimiento»); «Ver otra vez» y «Cambiar cámara» de 44 px.
+- Pruebas: `test/juego-sensaciones.test.js` y la de las luces del tráfico en `test/juego-noche.test.js`.
+
 ### Lo nuevo de la 0.14.115: el mundo de las escenas 3D, más real — sin cambio de base
 
 - **El suelo como se ve desde un avión** (shader de `motor3d-gl.js`): parcelas en filas desparejas, cada una con su

@@ -143,3 +143,25 @@ test('las mini-clases: 2 a 4 pasos con su texto y su idea clave (es y en) y su f
   // Todo lo que usa la vista existe en los dos idiomas.
   for (const k of ['juego.hora.dia', 'juego.hora.atardecer', 'juego.hora.noche', 'juego.clase.paso', 'juego.papi.lectura', 'juego.trafico.ves', 'juego.fuente']) assert.ok(k in es && k in en, k);
 });
+
+// 0.14.117: las luces del tráfico, en el mismo sitio que las del avión dibujado (el modelo nuevo: antes quedaban ~2 ft abajo).
+test('las luces del tráfico están en las puntas del ala, la cola y la deriva del avión dibujado', async () => {
+  const { primitivasAvion } = await import('../public/clase/motor3d.js');
+  const escala = 0.0032;
+  for (const rumbo of [0, 37, 270]) {
+    const tr = { x: 1.2, z: -3.4, ft: 2500, rumbo, kt: 100 };
+    const avion = primitivasAvion({ pos: [tr.x, tr.ft / 1000, tr.z], rumbo, escala, luces: true, t: 0.55 }); // (t = 0.55: la baliza encendida)
+    const de = nombre => avion.find(p => p.luzAvion === nombre).p;
+    const cerca = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 1e-9;
+    // Desde la izquierda (se ve la roja), desde la derecha (la verde) y desde atrás (la blanca).
+    const ver = (dx, dz) => primitivasTrafico(tr, { x: tr.x + dx, z: tr.z + dz }, { hora: 'noche', t: 0.5 }).filter(p => p.luzTrafico);
+    const h = (rumbo * Math.PI) / 180, F = [Math.sin(h), Math.cos(h)], R = [Math.cos(h), -Math.sin(h)];
+    const izq = ver(-R[0] * 5, -R[1] * 5), der = ver(R[0] * 5, R[1] * 5), atras = ver(-F[0] * 5, -F[1] * 5);
+    assert.ok(izq.some(p => p.c[0] > 200 && p.c[1] < 100 && cerca(p.p, de('izquierda'))), `roja en la punta izquierda (${rumbo}°)`);
+    assert.ok(der.some(p => p.c[1] > 200 && p.c[0] < 100 && cerca(p.p, de('derecha'))), `verde en la punta derecha (${rumbo}°)`);
+    assert.ok(atras.some(p => p.c[2] > 200 && cerca(p.p, de('cola'))), `blanca en la cola (${rumbo}°)`);
+    // El faro rojo, arriba de la deriva (t = 0.05: encendido).
+    const faro = primitivasTrafico({ ...tr, fase: 0 }, { x: tr.x, z: tr.z - 5 }, { hora: 'noche', t: 0.05 }).filter(p => p.luzTrafico && p.c[1] === 60);
+    assert.ok(faro.length && faro.every(p => cerca(p.p, de('baliza'))), `faro en la deriva (${rumbo}°)`);
+  }
+});

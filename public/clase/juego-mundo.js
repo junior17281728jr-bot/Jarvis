@@ -2,7 +2,7 @@
 // tiempo. Se arma UNA vez por paleta (con WebGL se sube una sola vez: la misma lista en cada cuadro).
 // Unidades: 1 = 1,000 ft (como el circuito 3D). Reusa las piezas de las escenas 3D (e3d-base.js y motor3d.js).
 import { aeropuerto, campo, cumulo } from './e3d-base.js';
-import { ruido, aleatorio, primitivasAvion, poligono } from './motor3d.js';
+import { ruido, aleatorio, primitivasAvion, poligono, mezclarColor } from './motor3d.js';
 import { PISTA, PISTA_B, VUELO, LAGO, enAgua, radioLago } from './vuelo-modelo.js';
 
 // 0.14.113: el lago (para el amarizaje): plano (altura 0) y con la orilla que sube despacio.
@@ -24,7 +24,7 @@ export function alturaSuelo(x, z) {
 
 // El agua del lago: franjas planas (de sur a norte, en trozos chicos: la niebla y el recorte se calculan por trozo; con
 // WebGL y con el dibujo de respaldo). Pegadas al suelo («calco»), con el color «agua» de la paleta (de día y de noche).
-export function aguaLago(paleta, { franjas = 18, trozos = 4 } = {}) {
+export function aguaLago(paleta, { franjas = 36, trozos = 4 } = {}) {
   const out = [], y = 0.0003, c = paleta.agua;
   const ancho = z => LAGO.ax * Math.sqrt(Math.max(0, 1 - ((z - LAGO.z) / LAGO.az) ** 2));
   for (let i = 0; i < franjas; i++) {
@@ -35,16 +35,42 @@ export function aguaLago(paleta, { franjas = 18, trozos = 4 } = {}) {
       const pts = [[LAGO.x + wa * f0, y, za], [LAGO.x + wb * f0, y, zb], [LAGO.x + wb * f1, y, zb], [LAGO.x + wa * f1, y, za]];
       // (en las puntas una franja es un triángulo: no se repite el vértice)
       const p = pts.filter((v, j) => j === 0 || Math.hypot(v[0] - pts[j - 1][0], v[2] - pts[j - 1][2]) > 1e-9);
-      if (p.length >= 3) out.push(poligono(p, c, { luz: 0.4, doble: true, capa: 'calco', n: [0, 1, 0] }));
+      // (0.14.117: con el mismo material que el agua de las escenas: refleja el cielo, más de costado; de lejos se ve
+      // clara, como un lago de verdad, y se funde con la bruma en lugar de ser un disco azul)
+      if (p.length >= 3) out.push(poligono(p, c, { luz: 1, doble: true, capa: 'calco', n: [0, 1, 0], refleja: 1, brillo: 0.8 }));
     }
   }
   return out;
 }
 
+// 0.14.117: la orilla del lago: una franja suave de árboles y tierra (algo más oscura que el campo) que lo «asienta» en el suelo; sin
+// ella, de lejos el agua se veía como un disco pegado encima. En trozos de 4 lados (convexos), pegados al suelo.
+export const ORILLA_ANCHO = 0.2; // unidades (unos 200 ft)
+export function orillaLago(paleta, { lados = 72 } = {}) {
+  const out = [], y = 0.0002, c = mezclarColor(paleta.bosque, paleta.tierra, 0.35);
+  const punto = (g, extra) => [LAGO.x + Math.sin(g) * (LAGO.ax + extra), y, LAGO.z + Math.cos(g) * (LAGO.az + extra)];
+  for (let i = 0; i < lados; i++) {
+    const g0 = (i / lados) * Math.PI * 2, g1 = ((i + 1) / lados) * Math.PI * 2;
+    // (adentro, bajo el agua: entre la franja y el borde del agua, hecho de trozos rectos, no queda rendija)
+    out.push(poligono([punto(g0, -0.6), punto(g0, ORILLA_ANCHO), punto(g1, ORILLA_ANCHO), punto(g1, -0.6)], c, { luz: 1, a: 0.5, doble: true, capa: 'calco', n: [0, 1, 0] }));
+  }
+  return out;
+}
+
+// 0.14.117: las nubes con la luz de la hora: de noche apenas se adivinan (gris azulado oscuro) y al atardecer, más
+// apagadas; de día, blancas como siempre. (antes eran blancas también de noche)
+export function nubesConLuz(prims, paleta) {
+  const k = paleta?.noche ? [0.16, 0.18, 0.25] : paleta?.oscuro ? [0.66, 0.62, 0.66] : null;
+  if (!k) return prims;
+  return prims.map(q => (q.tex === 'nube' ? { ...q, c: q.c.map((v, i) => Math.round(v * k[i])) } : q));
+}
+
 export function construirMundo(paleta, { conNubes = true } = {}) {
   const prims = [];
-  prims.push(...campo({ x0: -36, z0: -36, x1: 36, z1: 36, n: 18, altura: alturaSuelo, paleta, semilla: 5, falda: 400, agua: enAgua }));
-  prims.push(...aguaLago(paleta));
+  // (0.14.117: el terreno debajo del lago, de pasto: sus cuadros miden 4,000 ft y, pintados de agua, se salían de la orilla
+  // como un halo celeste alrededor del lago; el agua la pone aguaLago, justo hasta la orilla)
+  prims.push(...campo({ x0: -36, z0: -36, x1: 36, z1: 36, n: 18, altura: alturaSuelo, paleta, semilla: 5, falda: 400 }));
+  prims.push(...orillaLago(paleta), ...aguaLago(paleta));
   prims.push(...aeropuerto({ x: PISTA.x, z: PISTA.z, y: 0.0004, rumbo: PISTA.rumbo % 360, largo: PISTA.largoFt / VUELO.ftPorUnidad, ancho: PISTA.anchoFt / VUELO.ftPorUnidad, paleta, torre: true, detalle: true }));
   // 0.14.102: el aeropuerto B (pista 09), a unos 10 NM al noreste.
   prims.push(...aeropuerto({ x: PISTA_B.x, z: PISTA_B.z, y: 0.0004, rumbo: PISTA_B.rumbo % 360, largo: PISTA_B.largoFt / VUELO.ftPorUnidad, ancho: PISTA_B.anchoFt / VUELO.ftPorUnidad, paleta, torre: false, detalle: true }));
@@ -52,7 +78,7 @@ export function construirMundo(paleta, { conNubes = true } = {}) {
   const azar = aleatorio(11);
   for (let i = 0; i < (conNubes ? 9 : 0); i++) {
     const g = azar() * Math.PI * 2, r = 7 + azar() * 20;
-    prims.push(...cumulo({ x: Math.sin(g) * r, z: Math.cos(g) * r, base: 4.5, ancho: 1.6 + azar() * 1.6, alto: 1 + azar() * 1.2, semilla: 20 + i }).prims);
+    prims.push(...nubesConLuz(cumulo({ x: Math.sin(g) * r, z: Math.cos(g) * r, base: 4.5, ancho: 1.6 + azar() * 1.6, alto: 1 + azar() * 1.2, semilla: 20 + i }).prims, paleta));
   }
   return prims;
 }

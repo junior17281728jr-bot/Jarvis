@@ -9,7 +9,7 @@ import { crearRenderGL } from './clase/motor3d-gl.js';
 import { PALETAS } from './clase/e3d-base.js';
 import { dibujarCabina } from './clase/cabina.js';
 import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua } from './clase/vuelo-modelo.js';
-import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje } from './clase/juego-mundo.js';
+import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje, nubesConLuz } from './clase/juego-mundo.js';
 import { montarMinimapa } from './clase/e3d-minimapa.js';
 import { cumulo } from './clase/e3d-base.js';
 import { nubeTormenta } from './clase/e3d-efectos.js';
@@ -77,6 +77,45 @@ export const TECLAS = Object.freeze({
   ShiftLeft: ['potencia', 1], ShiftRight: ['potencia', 1], Equal: ['potencia', 1], NumpadAdd: ['potencia', 1],
   ControlLeft: ['potencia', -1], ControlRight: ['potencia', -1], Minus: ['potencia', -1], NumpadSubtract: ['potencia', -1],
 });
+// 0.14.117: el yugo en la pantalla (el teléfono): dónde quedó el dedo respecto de donde tocó primero (−1..1 en cada eje) →
+// el mando, con una zona muerta chica en el centro (el pulso no mueve el avión) y una curva suave: cerca del centro, fino
+// (para corregir un poco); hacia el borde, a fondo.
+export const YUGO_TACTIL = Object.freeze({ zona: 0.06, expo: 0.5, suaveS: 0.08 });
+export function curvaYugo(v, { zona = YUGO_TACTIL.zona, expo = YUGO_TACTIL.expo } = {}) {
+  const a = Math.min(1, Math.abs(v));
+  if (a <= zona) return 0;
+  const x = (a - zona) / (1 - zona);
+  return Math.sign(v) * ((1 - expo) * x + expo * x * x * x);
+}
+export const yugoDeToque = (dx, dy) => ({ alabeo: curvaYugo(dx), cabeceo: curvaYugo(dy) });
+// El mando sigue al dedo con un poquito de inercia (sin saltos aunque el dedo salte entre cuadros).
+export function suavizarYugo(antes, meta, dt, tau = YUGO_TACTIL.suaveS) {
+  const k = Math.min(1, dt / tau);
+  return { alabeo: antes.alabeo + (meta.alabeo - antes.alabeo) * k, cabeceo: antes.cabeceo + (meta.cabeceo - antes.cabeceo) * k };
+}
+// 0.14.117: la cámara de afuera (detrás del avión), como la de un video: sigue el rumbo con un poco de retraso, se
+// inclina un tercio de lo que se inclina el avión (se siente el viraje sin marear), baja un poco al subir y sube al bajar
+// (se ve la trayectoria) y en el suelo va más baja. Todo por segundos, no por cuadro (igual a 30 o a 60 cuadros por s).
+export const CAMARA_AFUERA = Object.freeze({ giroS: 0.45, alturaS: 0.8, alabeoS: 0.5, alabeo: 0.33, alto: 9, altoSuelo: 6, porGamma: 0.6, dist: 0.075 });
+export function seguirCamara(antes, a, dt, { reducir = false } = {}) {
+  const C = CAMARA_AFUERA, k = s => (reducir ? 1 : 1 - Math.exp(-Math.max(0, dt) / s));
+  const gammaG = ((a.gamma ?? 0) * 180) / Math.PI;
+  const altoMeta = a.enSuelo ? C.altoSuelo : Math.max(3, Math.min(16, C.alto - gammaG * C.porGamma));
+  const alabeoMeta = reducir ? 0 : (a.enSuelo ? 0 : a.alabeo ?? 0) * C.alabeo;
+  const p = antes ?? { giro: a.rumbo, alto: altoMeta, alabeo: alabeoMeta };
+  return { giro: mezclarAngulo(p.giro, a.rumbo, k(C.giroS)), alto: p.alto + (altoMeta - p.alto) * k(C.alturaS), alabeo: p.alabeo + (alabeoMeta - p.alabeo) * k(C.alabeoS) };
+}
+// El «arriba» de la cámara inclinada: el vertical girado hacia la derecha de la cámara.
+export function arribaInclinado(giro, alabeo) {
+  const g = (giro * Math.PI) / 180, b = (alabeo * Math.PI) / 180;
+  return [Math.cos(g) * Math.sin(b), Math.cos(b), -Math.sin(g) * Math.sin(b)];
+}
+// 0.14.117: la vista de la cabina: cuánto mira hacia abajo (grados) para que el horizonte quede a unos 3/5 del parabrisas
+// (arriba del tablero se ve el suelo delante: la pista en la final). fov: el vertical; tablero: la parte de abajo que tapa.
+export function miradaCabina(fov, tablero) {
+  const y = 0.6 * (1 - tablero); // dónde queda el horizonte (desde arriba, en fracción del alto)
+  return (Math.atan((0.5 - y) * 2 * Math.tan((fov * Math.PI) / 360)) * 180) / Math.PI;
+}
 // Los mandos con las teclas apretadas: el yugo va hacia ±1 (y vuelve al centro al soltar), la potencia sube o baja.
 export function mandosDeTeclas(apretadas, antes, dt) {
   const meta = { cabeceo: 0, alabeo: 0 };
@@ -254,9 +293,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // ---- el estado ----
   let avion = inicioDe(modo);
   const mandos = { cabeceo: 0, alabeo: 0, potencia: avion.potencia, flaps: avion.flaps };
-  const toque = { activo: false, cabeceo: 0, alabeo: 0 };
+  // (0.14.117: el yugo táctil: donde tocó primero es el centro; cabeceo/alabeo, lo que pide el dedo; suave, lo que llega)
+  const toque = { activo: false, cabeceo: 0, alabeo: 0, x0: 0, y0: 0, suave: { cabeceo: 0, alabeo: 0 } };
   const apretadas = new Set();
-  let vista = 'cabina', asistente = true, pausado = false, tiempo = 0, volo = modo === 'final' || modo === 'preguntas', ultimoToque = -10, girCam = avion.rumbo;
+  let vista = 'cabina', asistente = true, pausado = false, tiempo = 0, volo = modo === 'final' || modo === 'preguntas', ultimoToque = -10, camAfuera = null, dtCuadro = 1 / 60;
   let hora = mc?.hora ?? (leerPaleta() === PALETAS.oscuro ? 'atardecer' : 'dia');
   let paleta = paletaDe(hora), mundo = construirMundo(paleta), mundoLuces = lucesDelMundo(hora), ultimoConsejo = '', ultimoHud = '', relojHud = 0;
   // Las preguntas y los eventos (0.14.99).
@@ -302,7 +342,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       // (en las mini-clases para mirar, una vista acercada: la pista, el PAPI y las luces de lejos se distinguen)
       // (en las mini-clases, mc.fov es el campo horizontal: de pie, el vertical se agranda para mirar lo mismo)
       const fov = mc?.fov ? (ancho < alto ? (2 * Math.atan(Math.tan((mc.fov * Math.PI) / 360) * (alto / ancho)) * 180) / Math.PI : mc.fov) : (ancho < alto ? 74 : 56);
-      const b = baseAvion(avion.rumbo, avion.cabeceo - 7 * (fov / 74), avion.alabeo);
+      const tablero = Math.min(0.62, Math.max(alto * (ancho > alto ? 0.5 : 0.46), 170 * escalaPx) / Math.max(1, alto));
+      const b = baseAvion(avion.rumbo, avion.cabeceo - (mc?.fov ? 7 * (fov / 74) : miradaCabina(fov, tablero)), avion.alabeo);
       // La cabeza se mueve con los g (baja al tirar) y con la turbulencia (suave, sin marear).
       const turb = tiempo < rafagaHasta ? 1 : 0;
       const metaY = reducir ? 0 : -Math.max(-0.5, Math.min(2, (avion.g ?? 1) - 1)) * 0.00025 + turb * Math.sin(tiempo * 9.1) * 0.00012;
@@ -311,10 +352,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       const ojo = suma(suma(suma(pos, por(b.U, 0.0017 + cabeza.y)), por(b.F, 0.0016)), por(b.R, cabeza.x));
       return crearCamara({ ojo, mira: suma(ojo, b.F), arriba: b.U, fov, cerca: 0.0006 });
     }
-    girCam = reducir ? avion.rumbo : mezclarAngulo(girCam, avion.rumbo, 0.06);
-    const ojo = ojoOrbita({ mira: pos, giro: girCam, alto: 9, dist: 0.075 });
+    camAfuera = seguirCamara(camAfuera, avion, dtCuadro, { reducir });
+    const ojo = ojoOrbita({ mira: pos, giro: camAfuera.giro, alto: camAfuera.alto, dist: CAMARA_AFUERA.dist });
     if (ojo[1] < alturaSuelo(ojo[0], ojo[2]) + 0.003) ojo[1] = alturaSuelo(ojo[0], ojo[2]) + 0.003;
-    return crearCamara({ ojo, mira: pos, fov: ancho < alto ? 62 : 50, cerca: 0.002 });
+    return crearCamara({ ojo, mira: pos, arriba: arribaInclinado(camAfuera.giro, camAfuera.alabeo), fov: ancho < alto ? 62 : 50, cerca: 0.002 });
   }
   // 0.14.103: el cielo gris (con nubes, frentes o dentro de la capa).
   const mezclar = (a, b, k) => a.map((v, i) => Math.round(v + ((b[i] ?? v) - v) * Math.max(0, Math.min(1, k))));
@@ -464,8 +505,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   }
 
   // ---- cada cuadro ----
-  const mandosAhora = () => (toque.activo ? { cabeceo: toque.cabeceo, alabeo: toque.alabeo } : { cabeceo: mandos.cabeceo, alabeo: mandos.alabeo });
+  const yugoTocado = () => toque.activo || Math.abs(toque.suave.cabeceo) > 0.002 || Math.abs(toque.suave.alabeo) > 0.002;
+  const mandosAhora = () => (yugoTocado() ? { ...toque.suave } : { cabeceo: mandos.cabeceo, alabeo: mandos.alabeo });
   function paso(dt) {
+    toque.suave = suavizarYugo(toque.suave, toque.activo ? toque : { cabeceo: 0, alabeo: 0 }, dt);
     const k = mandosDeTeclas(apretadas, mandos, dt);
     mandos.cabeceo = k.cabeceo; mandos.alabeo = k.alabeo;
     if (apretadas.size && [...apretadas].some(x => TECLAS[x]?.[0] === 'potencia')) mandos.potencia = k.potencia;
@@ -530,7 +573,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // Dentro de la nube, el consejo es salir (mientras se esté dentro).
     if (cond.dentro && !avion.enSuelo) {
       if (ultimoConsejo !== 'imc') { chip.textContent = t('juego.tiempo.imc.salir', { min: TIEMPO_FAA.nubes.viraje180Min, g: TIEMPO_FAA.nubes.tasaEstandar }); chip.setAttribute('data-tono', 'mal'); ultimoConsejo = 'imc'; }
-    } else if (clave !== ultimoConsejo) { chip.textContent = t(`juego.consejo.${clave}`); chip.setAttribute('data-tono', clave === 'perdida' || clave === 'choque' ? 'mal' : 'bien'); ultimoConsejo = clave; }
+    } else if (clave !== ultimoConsejo) {
+      // (0.14.117: en el teléfono, el consejo que habla del yugo en lugar de las flechas, si lo hay)
+      const tac = `juego.consejo.${clave}_tactil`, texto = tactil && t(tac) !== tac ? t(tac) : t(`juego.consejo.${clave}`);
+      chip.textContent = texto; chip.setAttribute('data-tono', clave === 'perdida' || clave === 'choque' ? 'mal' : 'bien'); ultimoConsejo = clave; }
     const L = lecturas(avion);
     const linea = t('juego.hud', { kt: Math.round(L.kt), ft: Math.round(L.ft).toLocaleString('en-US'), rumbo: String(Math.round(L.rumbo) % 360 || 360).padStart(3, '0'), vs: Math.round(L.vs / 50) * 50 });
     if (linea !== ultimoHud) { hud.textContent = linea; ultimoHud = linea; }
@@ -548,6 +594,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     for (const [k, v] of Object.entries(d)) if (raiz.getAttribute(`data-vuelo-${k}`) !== v) raiz.setAttribute(`data-vuelo-${k}`, v);
   }
   const bucle = crearBucle(raiz, dt => {
+    dtCuadro = dt;
     // En el vuelo con preguntas el piloto automático va 3 veces más rápido entre preguntas (no en la aproximación).
     const veces = guiado && !enAproximacion && !abierta && !flujo ? GUIADO.velocidadReloj : 1;
     if (!pausado && !abierta && !repe) for (let k = 0; k < veces; k++) { tiempo += dt; paso(dt); }
@@ -808,7 +855,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     return out;
   }
   function ponerHora(nueva) {
-    hora = nueva; paleta = paletaDe(hora); mundo = construirMundo(paleta); mundoLuces = lucesDelMundo(hora);
+    hora = nueva; paleta = paletaDe(hora); mundo = construirMundo(paleta, { conNubes: tiempoMet === 'despejado' }); mundoLuces = lucesDelMundo(hora);
+    nubesTiempo = nubesConLuz(nubesDe(tiempoMet), paleta);
     raiz.setAttribute('data-hora', hora);
     pintarBotones();
     if (mc) pintarClase();
@@ -848,7 +896,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       const r = 15 * escalaPx;
       ctx.strokeStyle = 'rgba(255,214,90,0.95)'; ctx.lineWidth = 2 * escalaPx;
       ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.stroke();
-      const s = `${etiquetaAltura(avion, tr)} · ${nm.toFixed(1)} NM`;
+      const s = `${etiquetaAltura(avion, tr)} · ${nm < 0.1 ? '< 0.1' : nm.toFixed(1)} NM`; // (0.14.117: muy cerca, «< 0.1 NM», no «0.0»)
       ctx.font = `700 ${12 * escalaPx}px system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       const w = ctx.measureText(s).width + 8 * escalaPx;
       ctx.fillStyle = 'rgba(8,14,26,0.78)'; ctx.fillRect(q.x + r + 3 * escalaPx, q.y - 9 * escalaPx, w, 18 * escalaPx);
@@ -1095,7 +1143,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // ---- 0.14.103: el tiempo ----
   function ponerTiempo(id, { callado = false } = {}) {
-    tiempoMet = id; nubesTiempo = nubesDe(id); mundo = construirMundo(paleta, { conNubes: id === 'despejado' });
+    tiempoMet = id; nubesTiempo = nubesConLuz(nubesDe(id), paleta); mundo = construirMundo(paleta, { conNubes: id === 'despejado' });
     zonaAvisada = null; ajusteDicho = null; dentroAvisado = false; oferta.hidden = true;
     cond = condiciones(id, avion.x, avion.z, avion.ft);
     if (id === 'despejado') { ambiente = { ...ambiente, viento: { desde: 360, kt: 0 } }; ajuste = 29.92; }
@@ -1162,7 +1210,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   function reiniciar(m) {
     avion = inicioDe(m);
     mandos.potencia = avion.potencia; mandos.flaps = avion.flaps; mandos.cabeceo = 0; mandos.alabeo = 0;
-    volo = m === 'final' || m === 'preguntas'; ultimoToque = -10; tiempo = 0; girCam = avion.rumbo;
+    volo = m === 'final' || m === 'preguntas'; ultimoToque = -10; tiempo = 0; camAfuera = null;
     puntaje = puntajeInicial(); agenda = crearAgenda(azar); ambiente = { viento: { desde: 360, kt: 0 } }; rafagaHasta = -1; fallaDesde = null; decision = null;
     extras = []; nubeFalla = null; desvioHasta = -1; oferta.hidden = true; aviso.hidden = true; pregunta.hidden = true; explicacion.hidden = true; subtitulo.hidden = true; abierta = false;
     flujo = null; vistaAntes = null; indicado = null; trafico = traficoInicial(); avisados.clear(); terminarRepeticion(); repeDatos = null; sostener = null;
@@ -1253,16 +1301,21 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   relojPotencia = setInterval(() => { if ([...apretadas].some(x => TECLAS[x]?.[0] === 'potencia')) pintarPotencia(); }, 120);
 
   // ---- el yugo en pantalla (arrastrar) ----
+  // 0.14.117: el centro es donde tocó primero (tocar fuera del centro ya no mueve el avión de golpe); el mando sigue una
+  // curva (fino cerca del centro) y la perilla muestra cuánto se pidió.
   const mover = e => {
     const r = yugo.getBoundingClientRect(), radio = r.width / 2;
-    const dx = Math.max(-1, Math.min(1, (e.clientX - r.left - radio) / (radio * 0.8)));
-    const dy = Math.max(-1, Math.min(1, (e.clientY - r.top - radio) / (radio * 0.8)));
-    toque.alabeo = dx; toque.cabeceo = dy;
+    const dx = Math.max(-1, Math.min(1, (e.clientX - toque.x0) / (radio * 0.7)));
+    const dy = Math.max(-1, Math.min(1, (e.clientY - toque.y0) / (radio * 0.7)));
+    Object.assign(toque, yugoDeToque(dx, dy));
     perilla.style.transform = `translate(${(dx * radio * 0.62).toFixed(1)}px, ${(dy * radio * 0.62).toFixed(1)}px)`;
   };
-  yugo.addEventListener('pointerdown', e => { toque.activo = true; try { yugo.setPointerCapture(e.pointerId); } catch { /* sin captura */ } mover(e); e.preventDefault(); });
+  yugo.addEventListener('pointerdown', e => {
+    toque.activo = true; toque.x0 = e.clientX; toque.y0 = e.clientY; yugo.setAttribute('data-activo', '1');
+    try { yugo.setPointerCapture(e.pointerId); } catch { /* sin captura */ } mover(e); e.preventDefault();
+  });
   yugo.addEventListener('pointermove', e => { if (toque.activo) mover(e); });
-  const soltarYugo = () => { toque.activo = false; toque.alabeo = 0; toque.cabeceo = 0; perilla.style.transform = ''; };
+  const soltarYugo = () => { toque.activo = false; toque.alabeo = 0; toque.cabeceo = 0; perilla.style.transform = ''; yugo.removeAttribute('data-activo'); };
   yugo.addEventListener('pointerup', soltarYugo);
   yugo.addEventListener('pointercancel', soltarYugo);
   // ---- la palanca de potencia ----
@@ -1283,7 +1336,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     mandos.potencia = Math.max(0, Math.min(1, mandos.potencia + paso1)); pintarPotencia();
   });
   // El dedo sobre el juego no hace zoom ni mueve la página.
-  for (const n of [yugo, potencia, escenario]) n.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  // (0.14.117: también entre los mandos: un dedo que se resbala del yugo no desplaza ni agranda la página)
+  // (la lista de la prueba de motor, que va entre los mandos en el teléfono, sí se desplaza con el dedo)
+  for (const n of [yugo, potencia, escenario, mandosTactiles]) n.addEventListener('touchmove', e => { if (!e.target?.closest?.('.juego-runup')) e.preventDefault(); }, { passive: false });
 
   // ---- tema ----
   let temaObs = null;
