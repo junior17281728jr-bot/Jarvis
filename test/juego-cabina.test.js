@@ -452,7 +452,7 @@ test('0.14.123: los daños poco a poco (no «se acabó»), los pájaros y la min
   // En el modelo: con el tren roto el avión tira hacia ese lado y frena; con un ala dañada, alabea solo.
   const rodar = danos => { let a = { ...crearAvion({}), kt: 40, danos }; for (let i = 0; i < 120; i++) a = pasoVuelo(a, { potencia: 0 }, 1 / 60); return a; };
   const sano = rodar(null), danado = rodar(roto.danos);
-  assert.ok(danado.kt < sano.kt - 5 && Math.abs(((danado.rumbo + 540) % 360) - 180) > 3 && danado.alabeo > 3);
+  assert.ok(danado.kt < sano.kt - 3 && Math.abs(((danado.rumbo + 540) % 360) - 180) > 3 && danado.alabeo > 3); // (0.14.131: el roce es físico: frena, pero el motor puede más)
   let v = { ...crearAvion({ ft: 3000, kt: 100, potencia: 0.65, enSuelo: false }), danos: { ...D.sinDanos(), borde: 1 } };
   for (let i = 0; i < 180; i++) v = pasoVuelo(v, { potencia: 0.65 }, 1 / 60);
   assert.ok(v.alabeo > 3, 'el ala abollada tira (~1.75°/s sin corregir)');
@@ -471,9 +471,10 @@ test('0.14.123: los daños poco a poco (no «se acabó»), los pájaros y la min
     'juego.pajaros', 'juego.pajaros.adelante', 'juego.ave.titulo', 'juego.ave.que', ...D.PARTES_AVE.map(p => `juego.ave.${p}`),
     'juego.dano.titulo', 'juego.dano.ninguno', 'juego.dano.cuantos', ...['tren_doblado', 'tren_roto', 'helice', 'punta_ala', 'cola', 'goma'].flatMap(id => [`juego.dano.${id}`, `juego.dano.${id}.que`]),
     'juego.dano.parabrisas', 'juego.dano.borde', 'juego.dano.motor_ave']) assert.ok(es[k] && en[k], k);
-  // En el juego: los toques se clasifican antes del «choque»; el parabrisas rajado se dibuja en la cabina.
+  // En el juego: los toques se clasifican antes del «choque» (0.14.131: en el modelo); el parabrisas rajado, en la cabina.
   const vista = leer('juego-vista.js');
-  assert.match(vista, /if \(avion\.choque && !antes\.choque && !imp\.fatal\) avion = \{ \.\.\.avion, choque: false/);
+  assert.match(leer('clase/vuelo-modelo.js'), /const imp = agua \? null : clasificarImpacto\(n\.toque, a\.danos\);/);
+  assert.match(vista, /if \(avion\.toque\?\.nuevos\?\.length\) avisarDanos\(avion\.toque\.nuevos\);/);
   assert.match(vista, /grieta: avion\.danos\?\.parabrisas/);
   const { ctx, ops } = contexto();
   dibujarCabina(ctx, 1000, 600, datos(), { escala: 1, completo: true, extras: { ...EX, grieta: 1 } });
@@ -604,7 +605,7 @@ test('0.14.127: los avisos en una esquina (no pausan ni tapan) y los límites de
   assert.match(vista, /bAgl, b3d, bLimitesMenu\)/);
   assert.match(vista, /bAsistente2, bLimites, bMapa/);
   // Un toque que daña el avión: el resultado espera a que se detenga (se ve cómo se arrastra; nada se pausa antes).
-  assert.match(vista, /if \(danoAlTocar\) juicioPendiente = \{ juicio, datos: datosToque \};/);
+  assert.match(vista, /else juicioPendiente = \{ juicio, datos: datosToque \};/);
   assert.match(vista, /if \(juicioPendiente && avion\.enSuelo && avion\.kt < 3\)/);
   // El resultado trae lo que hace un piloto con cada daño.
   assert.match(vista, /juego-res-dano-que/);
@@ -729,4 +730,42 @@ test('0.14.130: más detalle de los daños: el motor golpeado se gasta de a poco
   const vista = leer('juego-vista.js');
   assert.match(vista, /const otros = listaDanos\(avion\.danos\)\.filter\(x => !danosVistos\.has\(x\)\);/);
   assert.match(leer('clase/juego-mundo.js'), /danos: d \?\? null/);
+});
+
+test('0.14.131: sin trabas después de un daño: con el tren roto acelera a fondo y despega; un toque que rompe el tren a buena velocidad puede volver a volar; el relieve es un campo', async () => {
+  const D = await import('../public/clase/juego-danos.js'), V = await import('../public/juego-vista.js');
+  const sd = D.sinDanos();
+  // Tren roto, en la pista, desde 20 kt a fondo: se arrastra (roce y tirón hacia el lado roto) pero acelera y despega.
+  let a = { ...V.inicioDe('libre'), kt: 20, danos: { ...sd, tren: 2, trenLado: 1, panza: 1 } }, k10 = null, despega = null;
+  for (let i = 0; i < 90 * 60 && !despega; i++) {
+    a = pasoVuelo(a, { potencia: 1, alabeo: a.enSuelo ? Math.max(-1, Math.min(1, -(a.x * 1000) / 40 - ((a.rumbo + 540) % 360 - 180) / 5)) : 0, cabeceo: a.kt > 55 ? 0.7 : 0 }, 1 / 60); // (sobre el eje de la pista, con el pie)
+    if (i === 10 * 60) k10 = a.kt;
+    if (!a.enSuelo) despega = { kt: a.kt, t: i / 60 };
+  }
+  assert.ok(k10 > 25, `a fondo acelera aunque se arrastre (${k10?.toFixed(1)} kt a los 10 s)`);
+  assert.ok(despega && despega.kt > 50, `despega con el daño (${JSON.stringify(despega)})`);
+  // Un toque que rompe el tren a buena velocidad: no es choque; se lleva algo de velocidad; a fondo y tirando, vuelve a volar.
+  let b = { ...crearAvion({ x: 0, z: -1.2, ft: 2, kt: 72, enSuelo: false, potencia: 1 }), gamma: -0.17, vs: -1300 }, toque = null;
+  for (let i = 0; i < 20 * 60; i++) { b = pasoVuelo(b, { potencia: 1, cabeceo: b.enSuelo && b.kt > 52 ? 0.8 : 0.3 }, 1 / 60); toque ??= b.toque; if (toque && !b.enSuelo && b.ft > 40) break; }
+  assert.ok(toque && toque.nuevos?.includes('tren_roto') && !b.choque, JSON.stringify(toque));
+  assert.ok(!b.enSuelo && b.ft > 40, `vuelve a volar (${b.ft.toFixed(0)} ft, ${b.kt.toFixed(0)} kt)`);
+  // El relieve: tocarlo suave es un aterrizaje fuera de campo (daños, no choque) a la altura del suelo; de picada, choque.
+  const suelo = 800;
+  let c = { ...crearAvion({ x: 25, z: 10, ft: suelo + 3, kt: 60, enSuelo: false }), gamma: -0.06, vs: -350 };
+  for (let i = 0; i < 60 && !c.toque; i++) c = pasoVuelo(c, { potencia: 0 }, 1 / 60, { ambiente: { sueloFt: suelo } });
+  assert.ok(c.toque && !c.choque && c.enSuelo && Math.abs(c.ft - suelo) < 1e-9 && c.toque.dentro === false);
+  let e = { ...crearAvion({ x: 25, z: 10, ft: suelo + 5, kt: 110, enSuelo: false }), gamma: -0.6, vs: -6000, cabeceo: -30 };
+  for (let i = 0; i < 60 && !e.toque; i++) e = pasoVuelo(e, { potencia: 0 }, 1 / 60, { ambiente: { sueloFt: suelo } });
+  assert.ok(e.choque, 'de picada, choque');
+  // La vista: la altura del suelo va al modelo; el resultado espera a que el alumno se detenga y se cancela si despega;
+  // la cámara de afuera pasa por la vertical del rizo sin dar la vuelta.
+  const vista = leer('juego-vista.js');
+  assert.match(vista, /sueloFt: alturaSuelo\(avion\.x, avion\.z\) \* VUELO\.ftPorUnidad/);
+  assert.match(vista, /if \(juicioPendiente && !avion\.enSuelo && avion\.ft - alturaSuelo\(avion\.x, avion\.z\) \* VUELO\.ftPorUnidad > 30\) \{ juicioPendiente = null; volo = true; \}/);
+  assert.doesNotMatch(vista.slice(vista.indexOf('else juicioPendiente'), vista.indexOf('else juicioPendiente') + 200), /mandos\.potencia = 0/);
+  let cam = V.seguirCamara(null, { rumbo: 10, alabeo: 0, cabeceo: 85, gamma: 1.4 }, 1 / 60);
+  for (let i = 0; i < 30; i++) cam = V.seguirCamara(cam, { rumbo: 190, alabeo: 180, cabeceo: 80, gamma: 1.3 }, 1 / 60);
+  assert.ok(Math.abs(((cam.giro - 10 + 540) % 360) - 180) < 1, `la cámara no da la vuelta (${cam.giro.toFixed(1)})`);
+  // (los avisos chicos, en el teléfono de lado, en la esquina de arriba a la derecha)
+  assert.match(leer('juego.css'), /\.juego-tostadas \{ top: calc\(max\(6px, env\(safe-area-inset-top\)\) \+ 54px\); width: 170px; left: auto; right: calc\(var\(--reserva-der/);
 });

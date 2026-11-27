@@ -710,7 +710,7 @@ body.juego-activo { overflow: hidden; }
 .juego-tostada-icono { flex: none; font-size: 14px; }
 .juego-tostada-texto { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 @media (orientation: portrait) { .juego-vuelo[data-tactil="1"] .juego-tostadas { top: calc(max(8px, env(safe-area-inset-top)) + 172px); width: min(240px, calc(100% - 180px)); } .juego-vuelo[data-tactil="1"] .juego-agl { left: auto; right: 8px; transform: none; } }
-@media (orientation: landscape) and (max-height: 500px) { .juego-vuelo[data-tactil="1"] .juego-tostadas { top: calc(max(6px, env(safe-area-inset-top)) + 54px); width: 170px; } .juego-vuelo[data-tactil="1"] .juego-agl { left: auto; right: calc(var(--reserva-der, 0px) + 8px); transform: none; } }
+@media (orientation: landscape) and (max-height: 500px) { .juego-vuelo[data-tactil="1"] .juego-tostadas { top: calc(max(6px, env(safe-area-inset-top)) + 54px); width: 170px; left: auto; right: calc(var(--reserva-der, 0px) + max(8px, env(safe-area-inset-right))); /* (0.14.131: en la esquina de arriba a la derecha, lejos del avión) */ } .juego-vuelo[data-tactil="1"] .juego-agl { left: auto; right: calc(var(--reserva-der, 0px) + 8px); transform: none; } }
 @media (prefers-reduced-motion: reduce) { .juego-tostada { animation: none; } }
 .juego-danos-lista { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .juego-hoja-fuente { list-style: none; margin-left: -18px; color: #9aa6b8; font-size: 12px; }

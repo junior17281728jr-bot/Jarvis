@@ -94,7 +94,7 @@ export function danoAve(antes, parte, lado = 1) {
 
 // Lo que hacen los daños en el vuelo (para vuelo-modelo.js):
 // potencia (factor), rugido (vibración 0..1), alabeo (°/s² que tira hacia un lado en el aire), tiron (°/s del rumbo en el
-// suelo), frenoSuelo (kt/s), inclinacion (° de alabeo quieto en el suelo), motorPara.
+// suelo), frenoSuelo (kt/s de roce con todo el peso en el suelo: el ala que sostiene lo alivia), inclinacion (° de alabeo quieto en el suelo), motorPara.
 export function efectosDanos(d) {
   // potencia, rugido, alabeo (°/s² hacia un lado), tiron (°/s en el suelo), frenoSuelo (kt/s), inclinacion (° en el suelo),
   // motorPara, autAlabeo y autCabeceo (cuánto responden los alerones y el timón de profundidad, 0..1), cabeceoExtra (°/s de
@@ -108,9 +108,9 @@ export function efectosDanos(d) {
   if (d.borde) e.alabeo += d.borde * 5;
   // (tren roto: los nuevos puntos de apoyo son la panza y la punta del ala de ese lado: el avión baja ~1.8 ft, se inclina
   // ~12° y se arrastra con mucha fricción; doblado: rueda, inclinado un poco y tirando hacia ese lado)
-  if (d.tren >= 2) { e.tiron += (d.trenLado || 1) * 9; e.frenoSuelo += 7; e.inclinacion = (d.trenLado || 1) * 12; e.hundido = 1.8; }
-  else if (d.tren >= 1) { e.tiron += (d.trenLado || 1) * 3; e.frenoSuelo += 1.5; e.inclinacion = (d.trenLado || 1) * 2.5; e.hundido = 0.4; }
-  if (d.goma) { e.tiron += d.goma * 4; e.frenoSuelo += 2.5; }
+  if (d.tren >= 2) { e.tiron += (d.trenLado || 1) * 9; e.frenoSuelo += 2.3; e.inclinacion = (d.trenLado || 1) * 12; e.hundido = 1.8; }
+  else if (d.tren >= 1) { e.tiron += (d.trenLado || 1) * 3; e.frenoSuelo += 0.6; e.inclinacion = (d.trenLado || 1) * 2.5; e.hundido = 0.4; }
+  if (d.goma) { e.tiron += d.goma * 4; e.frenoSuelo += 0.8; }
   if (d.cola) { e.guinada += 0.6; }
   if (d.elevador > 0) { e.autCabeceo *= 1 - Math.min(0.85, d.elevador * 0.7); e.cabeceoExtra += -d.elevador * 1.5; if (d.elevador >= 0.8) e.oscila = Math.min(1, d.elevador); }
   if (d.aleron > 0) { e.autAlabeo *= 1 - Math.min(0.7, d.aleron * 0.6); e.alabeo += d.aleron * 3; }

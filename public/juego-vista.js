@@ -106,9 +106,17 @@ export function seguirCamara(antes, a, dt, { reducir = false } = {}) {
   const gammaG = ((a.gamma ?? 0) * 180) / Math.PI;
   const altoMeta = a.enSuelo ? C.altoSuelo : Math.max(3, Math.min(16, C.alto - gammaG * C.porGamma));
   // (0.14.119: sin el Asistente se puede alabear hasta dar la vuelta: la cámara se inclina a lo sumo como con 60°)
-  const alabeoMeta = reducir ? 0 : (a.enSuelo ? 0 : Math.max(-60, Math.min(60, a.alabeo ?? 0))) * C.alabeo;
-  const p = antes ?? { giro: a.rumbo, alto: altoMeta, alabeo: alabeoMeta };
-  return { giro: mezclarAngulo(p.giro, a.rumbo, k(C.giroS)), alto: p.alto + (altoMeta - p.alto) * k(C.alturaS), alabeo: p.alabeo + (alabeoMeta - p.alabeo) * k(C.alabeoS) };
+  // 0.14.131: por la vertical (el rizo) los ángulos del avión dan media vuelta de golpe (el rumbo y el alabeo saltan 180°
+  // juntos, aunque el avión no gira): la cámara lo nota y sigue mirando igual (vuelta: el salto que se suma), y solo vuelve
+  // a ponerse detrás, despacio, si el avión se queda así más de 2.5 s con la nariz cerca del horizonte.
+  const n180 = g => ((((g % 360) + 540) % 360) - 180);
+  let vuelta = antes?.vuelta ?? 0, quieto = antes?.quieto ?? 0;
+  if (antes?.r0 != null && Math.abs(n180(a.rumbo - antes.r0)) > 150 && Math.abs(n180((a.alabeo ?? 0) - antes.a0)) > 150) { vuelta = n180(vuelta + 180); quieto = 0; }
+  if (vuelta) { quieto = Math.abs(a.cabeceo ?? 0) < 35 ? quieto + Math.max(0, dt) : 0; if (quieto > 2.5) { const paso = 60 * Math.max(0, dt); vuelta = Math.abs(vuelta) <= paso ? 0 : vuelta - Math.sign(vuelta) * paso; } }
+  const rumboMeta = (a.rumbo ?? 0) + vuelta, alabeoAvion = n180((a.alabeo ?? 0) + vuelta);
+  const alabeoMeta = reducir ? 0 : (a.enSuelo ? 0 : Math.max(-60, Math.min(60, alabeoAvion))) * C.alabeo;
+  const p = antes ?? { giro: rumboMeta, alto: altoMeta, alabeo: alabeoMeta };
+  return { giro: mezclarAngulo(p.giro, rumboMeta, k(C.giroS)), alto: p.alto + (altoMeta - p.alto) * k(C.alturaS), alabeo: p.alabeo + (alabeoMeta - p.alabeo) * k(C.alabeoS), vuelta, quieto, r0: a.rumbo, a0: a.alabeo ?? 0 };
 }
 // El «arriba» de la cámara inclinada: el vertical girado hacia la derecha de la cámara.
 export function arribaInclinado(giro, alabeo) {
@@ -828,7 +836,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     }
     mezclaDelAsistente();
     // (0.14.118: entre ráfaga y ráfaga, la turbulencia de siempre: suave con buen tiempo, más con viento, nubes o tormenta)
-    const amb = { viento: vientoActual, vertical: corriente, rafaga: tiempo < rafagaHasta ? rafaga : !mc && turbLeve > 0.005 ? rafagaLeve : null };
+    // (0.14.131: la altura del suelo debajo: lejos del aeropuerto hay relieve, y se puede tocar como en un campo)
+    const amb = { viento: vientoActual, vertical: corriente, rafaga: tiempo < rafagaHasta ? rafaga : !mc && turbLeve > 0.005 ? rafagaLeve : null, sueloFt: alturaSuelo(avion.x, avion.z) * VUELO.ftPorUnidad };
     const antes = avion;
     // (0.14.127: los límites de maniobra van aparte del Asistente: en Vuelo libre, los elige el alumno; en las mini-clases y
     // con el piloto automático, como antes)
@@ -846,18 +855,15 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (!guiado) eventos();
     if (!mc?.congelar) traficoPaso(dt);
     if (!avion.enSuelo && avion.ft > 30) volo = true;
-    // El relieve (lejos del aeropuerto): tocarlo es chocar.
-    if (!avion.enSuelo && avion.ft / VUELO.ftPorUnidad < alturaSuelo(avion.x, avion.z)) avion = { ...avion, choque: true, kt: 0 };
+    // El relieve (lejos del aeropuerto): el modelo lo toca como un campo (amb.sueloFt) y el golpe se clasifica igual que en la
+    // pista; solo si quedó muy por debajo (un salto de un cuadro dormido) es choque.
+    if (!avion.enSuelo && avion.ft < alturaSuelo(avion.x, avion.z) * VUELO.ftPorUnidad - 60) avion = { ...avion, choque: true, kt: 0 };
     // (en el agua, el choque tiene su consejo: el del amarizaje)
-    // 0.14.123: cada toque se clasifica: los daños parciales siguen (con sus consecuencias); solo lo imposible de
-    // sobrevivir termina el vuelo.
-    let danoAlTocar = false;
-    if (avion.toque && !avion.toque.agua) {
-      const imp = clasificarImpacto(avion.toque, avion.danos);
-      if (avion.choque && !antes.choque && !imp.fatal) avion = { ...avion, choque: false, kt: Math.max(0, avion.toque.kt * 0.5) };
-      if (!avion.choque) { avion = { ...avion, danos: imp.danos }; if (imp.nuevos.length) { avisarDanos(imp.nuevos); danoAlTocar = true; } }
-    }
-    // (0.14.127: con un toque que dañó el avión, el resultado espera a que se detenga: se ve cómo se arrastra, sin pausa)
+    // 0.14.123 / 0.14.131: cada toque lo clasifica el modelo (juego-danos.js): los daños parciales siguen, con sus
+    // consecuencias (se arrastra, rueda o vuelve a volar); solo lo imposible de sobrevivir termina el vuelo.
+    if (avion.toque?.nuevos?.length) avisarDanos(avion.toque.nuevos);
+    // (0.14.131: el resultado del toque sale cuando el alumno detiene el avión; si vuelve a despegar, el vuelo sigue)
+    if (juicioPendiente && !avion.enSuelo && avion.ft - alturaSuelo(avion.x, avion.z) * VUELO.ftPorUnidad > 30) { juicioPendiente = null; volo = true; }
     if (juicioPendiente && avion.enSuelo && avion.kt < 3) { const jp = juicioPendiente; juicioPendiente = null; terminarVuelo(jp.juicio, jp.datos); return; }
     if (avion.choque && !antes.choque) return terminarVuelo(avion.toque?.agua ? juzgarAmarizaje(avion.toque, { choque: true }) : { nivel: 'choque', motivos: ['choque'], puntos: 0 }, avion.toque ?? null);
     if (avion.toque) sonido.evento('toque');
@@ -865,11 +871,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       ultimoToque = tiempo;
       // 0.14.113: en el lago, el juez del amarizaje (nunca «fuera de la pista»).
       const juicio = juzgarToque(avion.toque, { choque: avion.choque });
-      // Con buen aterrizaje la potencia queda en ralentí (para frenar); el resultado sale al ir despacio.
-      mandos.potencia = 0; pintarPotencia();
       const datosToque = avion.toque;
-      if (danoAlTocar) juicioPendiente = { juicio, datos: datosToque };
-      else setTimeout(() => terminarVuelo(juicio, datosToque), reducir ? 0 : 1400);
+      // (en las mini-clases y con el piloto automático, como antes: ralentí y el resultado enseguida; en el vuelo libre, nada
+      // se traba: la potencia queda donde la dejó el alumno y el resultado espera a que se detenga)
+      if (mc || guiado) { mandos.potencia = 0; pintarPotencia(); setTimeout(() => terminarVuelo(juicio, datosToque), reducir ? 0 : 1400); }
+      else juicioPendiente = { juicio, datos: datosToque };
       volo = false;
     }
   }

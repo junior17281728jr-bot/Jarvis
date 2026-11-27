@@ -6,7 +6,7 @@
 // Unidades del estado: kt (velocidad), ft (altitud), grados (rumbo, cabeceo, alabeo), ft/min (vs).
 import { tasaDeGiro, inclinacionCoordinador, agujaAnemometro, agujasAltimetro, agujaVariometro } from './instrumentos.js';
 import { pasoMotor } from './motor-piston.js';
-import { efectosDanos } from './juego-danos.js';
+import { efectosDanos, clasificarImpacto } from './juego-danos.js';
 
 export const VUELO = Object.freeze({
   perdidaKt: 48, // velocidad de pérdida sin flaps (alas niveladas)
@@ -89,6 +89,8 @@ export const ALA_CAE = 30;
 // 0.14.117: el viento cruzado en el suelo: el avión tiende a poner la nariz hacia el viento («weathervane», AFH, glosario)
 // y hay que corregir con los pedales (aquí, el yugo de costado). Grados/s por nudo de viento cruzado.
 export const VELETA = 0.12;
+// 0.14.131: el pasto frena más que el asfalto (kt/s, con todo el peso sobre las ruedas; con el ala sosteniendo, menos).
+export const SUELO = Object.freeze({ pastoKtS: 1.5 });
 
 // Coeficiente de sustentación relativo (1 = el máximo) para un ángulo de ataque; pasada la pérdida, cae.
 // (0.14.118: flaps de 0 a 1.5: 10° = 0.5, 20° = 1 (como antes), 30° = 1.5; el máximo sube hasta los 20° y después casi
@@ -250,8 +252,13 @@ function subpaso(a, m, dt, amb, asistente, limites = asistente) {
     // ---- velocidad en el suelo (el empuje, el aire y la rodadura) ----
     const alfa = n.cabeceo;
     const resistencia = 0.000163 * a.kt * a.kt + flaps * 0.0002 * a.kt * a.kt + Math.max(0, alfa) ** 2 * 0.012 + 0.8 + (n.potencia < 0.05 && a.kt < 70 ? 4 : 0);
-    const kt = Math.max(0, a.kt + (empujeDe(efectiva, a.kt, a.ft) - resistencia) * dt);
     const cl = sustentacion(alfa, flaps) * (1 + EFECTO_SUELO.masSustentacion * EFECTO_SUELO.tabla[0][1]);
+    // 0.14.131 (el dueño: «si se daña una rueda, el avión puede seguir acelerando y arrancar»): el roce de lo que se arrastra
+    // (la panza, la rueda doblada, la goma, el pasto) es una fricción con el peso que carga el suelo: con más velocidad el ala
+    // sostiene más y el roce baja. Nada lo traba: a fondo, el empuje puede más y el avión acelera y puede despegar.
+    const carga = lim(1 - (a.kt / VUELO.perdidaKt) ** 2 * cl * ef.sustentacion, 0, 1);
+    const roce = a.agua ? 0 : ((ef.frenoSuelo ?? 0) + (enPista(a.x, a.z, pistaDe(a.x, a.z)).dentro ? 0 : SUELO.pastoKtS)) * carga;
+    const kt = Math.max(0, a.kt + (empujeDe(efectiva, a.kt, a.ft) - resistencia - roce) * dt);
     const sobreW = (kt / VUELO.perdidaKt) ** 2 * cl * ef.sustentacion;
     n.g = 1; n.perdida = false; n.aviso = false; n.efectoSuelo = 0; n.alfa = alfa; n.ejes = null;
     let gamma = 0;
@@ -318,7 +325,7 @@ function subpaso(a, m, dt, amb, asistente, limites = asistente) {
     const rafaga = amb.rafaga ? amb.rafaga(n.t) : null;
     if (rafaga) { l = girar(l, v, -rad(rafaga.alabeo * dt)); alfa += rafaga.cabeceo * dt; v = norm(sumar(v, escalar(l, rad(rafaga.cabeceo * 0.4) * dt))); }
     // -- las fuerzas (en kt/s; G_KTS es 1 g) --
-    const ge = efectoSuelo(a.ft);
+    const ge = efectoSuelo(a.ft - (amb.sueloFt ?? 0));
     n.efectoSuelo = ge;
     const x = (V0 / VUELO.perdidaKt) ** 2; // la presión dinámica relativa (1 = la de la pérdida)
     const cl0 = sustentacion(alfa, flaps) * ef.sustentacion, cl = cl0 * (1 + EFECTO_SUELO.masSustentacion * ge);
@@ -361,27 +368,34 @@ function subpaso(a, m, dt, amb, asistente, limites = asistente) {
     n.ejes = { v, l, alfa, firma: firmaDe(n) };
   }
   // ---- tocar el suelo ----
-  if (!n.enSuelo && n.ft <= 0) {
+  // 0.14.131: el suelo puede estar más alto que la pista (el relieve lejos del aeropuerto): amb.sueloFt (ft).
+  const sueloFt = amb.sueloFt ?? 0;
+  if (!n.enSuelo && n.ft <= sueloFt) {
     const pista = pistaDe(n.x, n.z), p = enPista(n.x, n.z, pista);
     // 0.14.113: en el lago, el toque es un amarizaje (agua: true): no rebota y el agua frena muy rápido.
     const agua = enAgua(n.x, n.z);
     n.toque = { kt: a.kt, vs: a.vs, alabeo: a.alabeo, cabeceo: a.cabeceo, costado: p.costado, largo: p.largo, dentro: p.dentro && !agua, rumbo: n.rumbo, pista: pista.id, lateralKt: n.deriva ?? 0, ...(agua ? { agua: true } : {}) };
-    n.ft = 0; n.enSuelo = true; n.gamma = 0; n.vs = 0; n.alabeo = 0; n.cabeceo = Math.max(0, Math.min(n.cabeceo, 8)); n.p = 0; n.q = 0; n.agua = agua;
-    if (a.vs < -1000 || Math.abs(a.alabeo) > 25 || a.cabeceo < -8) { n.choque = true; n.kt = 0; }
-    // Un toque duro rebota: las ruedas devuelven parte del golpe (un salto chico). En el agua, no.
-    else if (a.vs < -ATERRIZAJE.vsDuroFpm && !agua) { n.enSuelo = false; n.ft = 0.5; n.gamma = rad(Math.min(4, (-a.vs * 0.3) / (Math.max(a.kt, 30) * KT_FTS * 60) * 57.3)); n.vs = -a.vs * 0.3; n.toque.rebote = true; }
+    n.ft = sueloFt; n.enSuelo = true; n.gamma = 0; n.vs = 0; n.alabeo = 0; n.cabeceo = Math.max(0, Math.min(n.cabeceo, 8)); n.p = 0; n.q = 0; n.agua = agua;
+    // 0.14.131: en tierra (la pista, el pasto o el relieve), el golpe lo clasifica juego-danos.js: solo lo imposible de
+    // sobrevivir es choque; si no, los daños (con sus consecuencias) y el avión sigue: se arrastra, rueda o vuelve a volar.
+    // Con el tren roto el golpe se lleva algo de velocidad (la panza toca). En el agua, como antes.
+    const imp = agua ? null : clasificarImpacto(n.toque, a.danos);
+    if (imp) { n.danos = imp.danos; if (imp.nuevos.length) n.toque.nuevos = imp.nuevos; }
+    const rompio = imp && imp.danos.tren >= 2 && !(a.danos?.tren >= 2);
+    if (imp ? imp.fatal : (a.vs < -1000 || Math.abs(a.alabeo) > 25 || a.cabeceo < -8)) { n.choque = true; n.kt = 0; }
+    else if (rompio) n.kt = a.kt * 0.8;
+    // Un toque duro rebota: las ruedas devuelven parte del golpe (un salto chico). En el agua, no; con el tren roto, tampoco.
+    else if (a.vs < -ATERRIZAJE.vsDuroFpm && !agua) { n.enSuelo = false; n.ft = sueloFt + 0.5; n.gamma = rad(Math.min(4, (-a.vs * 0.3) / (Math.max(a.kt, 30) * KT_FTS * 60) * 57.3)); n.vs = -a.vs * 0.3; n.toque.rebote = true; }
   }
   if (n.enSuelo) {
-    n.ft = 0;
+    n.ft = sueloFt;
     n.agua = enAgua(n.x, n.z);
     // En el agua, la resistencia del agua frena en pocos segundos y el avión queda flotando; fuera de la pista, el pasto
     // frena más.
     if (n.agua) n.kt = Math.max(0, n.kt - (AMARIZAJE.frenoKtS + AMARIZAJE.frenoPorKt * n.kt) * dt);
-    else if (!enPista(n.x, n.z, pistaDe(n.x, n.z)).dentro) n.kt = Math.max(0, n.kt - 3 * dt);
     // 0.14.118: los frenos (0..1: el pedal o el freno de mano): hasta ~10 kt por segundo (más que el empuje a fondo: con
     // el freno de mano puesto el avión no se mueve).
     if (!n.agua && (m.freno ?? 0) > 0) n.kt = Math.max(0, n.kt - lim(m.freno, 0, 1) * 10 * dt);
-    if (!n.agua && ef.frenoSuelo) n.kt = Math.max(0, n.kt - ef.frenoSuelo * dt);
   } else n.agua = false;
   // Los flaps bajan y suben despacio (para el indicador: unos 4 s).
   n.flapsPos = hacia(a.flapsPos ?? flaps, flaps, dt / 4);
